@@ -54,6 +54,12 @@ type View =
 
 const S3_SETTINGS_KEY = "residency-days:s3-settings";
 const OAUTH_SESSION_KEY = "residency-days:oauth-pkce-session";
+const OAUTH_TOKEN_KEY = "residency-days:oauth-access-token";
+const BYOS_BASE = "https://byos.ashfame.com";
+const BYOS_SCOPE = "storage:app storage:s3";
+const BYOS_REGION = "us-east-1";
+const BYOS_PREFIX = "residency-days";
+const BYOS_CLIENT_ID = import.meta.env.VITE_BYOS_CLIENT_ID ?? "";
 
 const navItems: Array<{ id: View; label: string; icon: React.ComponentType<{ size?: number }> }> = [
   { id: "dashboard", label: "Dashboard", icon: Landmark },
@@ -77,10 +83,10 @@ const loadStoredS3Settings = (): Partial<DirectS3Settings> => {
   const raw = localStorage.getItem(S3_SETTINGS_KEY);
   if (!raw) {
     return {
-      endpoint: "https://s3.amazonaws.com",
-      region: "us-east-1",
-      prefix: "residency-days",
-      forcePathStyle: false
+      endpoint: BYOS_BASE,
+      region: BYOS_REGION,
+      prefix: BYOS_PREFIX,
+      forcePathStyle: true
     };
   }
   try {
@@ -88,6 +94,72 @@ const loadStoredS3Settings = (): Partial<DirectS3Settings> => {
   } catch {
     return {};
   }
+};
+
+interface StoredOAuthToken {
+  accessToken: string;
+  expiresAt: number;
+}
+
+const callbackRedirectUri = (): string => `${window.location.origin}${window.location.pathname}`;
+
+const byosConfig = (clientId: string): OAuthPkceConfig => ({
+  authorizationEndpoint: `${BYOS_BASE}/oauth2/auth`,
+  tokenEndpoint: `${BYOS_BASE}/oauth2/token`,
+  clientId,
+  redirectUri: callbackRedirectUri(),
+  scope: BYOS_SCOPE,
+  credentialMintEndpoint: `${BYOS_BASE}/oauth2/protocol-credentials`,
+  credentialLabel: "Residency Days"
+});
+
+const persistS3Settings = (
+  settings: Partial<DirectS3Settings>,
+  options: { includeSecrets: boolean }
+): void => {
+  const persisted = options.includeSecrets
+    ? settings
+    : {
+        endpoint: settings.endpoint,
+        bucket: settings.bucket,
+        region: settings.region,
+        prefix: settings.prefix,
+        forcePathStyle: settings.forcePathStyle
+      };
+  localStorage.setItem(S3_SETTINGS_KEY, JSON.stringify(persisted));
+};
+
+const storeOAuthToken = (token: { access_token: string; expires_in?: number }): StoredOAuthToken => {
+  const expiresAt = Date.now() + Math.max((token.expires_in ?? 3600) - 60, 60) * 1000;
+  const stored = { accessToken: token.access_token, expiresAt };
+  sessionStorage.setItem(OAUTH_TOKEN_KEY, JSON.stringify(stored));
+  return stored;
+};
+
+const readOAuthToken = (): StoredOAuthToken | undefined => {
+  const raw = sessionStorage.getItem(OAUTH_TOKEN_KEY);
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    const token = JSON.parse(raw) as StoredOAuthToken;
+    return token.expiresAt > Date.now() ? token : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const clearOAuthState = (): void => {
+  sessionStorage.removeItem(OAUTH_SESSION_KEY);
+  sessionStorage.removeItem(OAUTH_TOKEN_KEY);
+};
+
+const readStoredOAuthSession = (): OAuthPkceSession => {
+  const raw = sessionStorage.getItem(OAUTH_SESSION_KEY);
+  if (!raw) {
+    throw new Error("Create a BYOS authorization request first.");
+  }
+  return JSON.parse(raw) as OAuthPkceSession;
 };
 
 const isCompleteS3Settings = (
@@ -249,19 +321,28 @@ export function App() {
     loadStoredS3Settings
   );
   const remoteCheckComplete = useRef(false);
+  const oauthCallbackComplete = useRef(false);
 
   useEffect(() => {
     let active = true;
     void (async () => {
-      const [initialState, detected] = await Promise.all([
-        dataClient.init(),
-        dataClient.detectCapabilities()
-      ]);
+      const initialState = await dataClient.init();
+      dataClient
+        .detectCapabilities()
+        .then((detected) => {
+          if (active) {
+            setCapabilities(detected);
+          }
+        })
+        .catch((error: unknown) => {
+          if (active) {
+            setMessage(error instanceof Error ? error.message : String(error));
+          }
+        });
       if (!active) {
         return;
       }
       setState(initialState);
-      setCapabilities(detected);
       setCountryCode(initialState.settings.selected_country);
       setProfileId(initialState.settings.selected_tax_year_profile_id);
       const profile = initialState.tax_year_profiles.find(
@@ -279,6 +360,86 @@ export function App() {
       storageClient.dispose();
     };
   }, [dataClient, storageClient]);
+
+  useEffect(() => {
+    if (oauthCallbackComplete.current) {
+      return;
+    }
+    oauthCallbackComplete.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get("error");
+    const code = params.get("code");
+    const returnedState = params.get("state");
+
+    if (error) {
+      window.history.replaceState({}, document.title, callbackRedirectUri());
+      queueMicrotask(() => {
+        setView("storage");
+        setMessage(params.get("error_description") ?? error);
+      });
+      return;
+    }
+    if (!code || !returnedState) {
+      const token = readOAuthToken();
+      if (token) {
+        void mintS3Credentials(`${BYOS_BASE}/oauth2/protocol-credentials`, token.accessToken, {
+          endpoint: BYOS_BASE,
+          region: BYOS_REGION,
+          prefix: BYOS_PREFIX,
+          forcePathStyle: true,
+          label: "Residency Days"
+        })
+          .then((settings) => {
+            setS3Settings(settings);
+            persistS3Settings(settings, { includeSecrets: false });
+          })
+          .catch(() => {
+            clearOAuthState();
+          });
+      }
+      return;
+    }
+
+    let session: OAuthPkceSession;
+    try {
+      session = readStoredOAuthSession();
+    } catch (sessionError) {
+      window.history.replaceState({}, document.title, callbackRedirectUri());
+      queueMicrotask(() => {
+        setBusy(false);
+        setMessage(sessionError instanceof Error ? sessionError.message : String(sessionError));
+      });
+      return;
+    }
+    queueMicrotask(() => {
+      setBusy(true);
+      setView("storage");
+    });
+    void exchangeAuthorizationCode(session, code, returnedState)
+      .then((token) => {
+        const stored = storeOAuthToken(token);
+        return mintS3Credentials(session.config.credentialMintEndpoint, stored.accessToken, {
+          endpoint: BYOS_BASE,
+          region: BYOS_REGION,
+          prefix: BYOS_PREFIX,
+          forcePathStyle: true,
+          label: session.config.credentialLabel ?? "Residency Days"
+        });
+      })
+      .then((settings) => {
+        setS3Settings(settings);
+        persistS3Settings(settings, { includeSecrets: false });
+        sessionStorage.removeItem(OAUTH_SESSION_KEY);
+        setMessage("BYOS S3 credentials minted for this browser session.");
+      })
+      .catch((callbackError: unknown) => {
+        setMessage(callbackError instanceof Error ? callbackError.message : String(callbackError));
+      })
+      .finally(() => {
+        setBusy(false);
+        window.history.replaceState({}, document.title, callbackRedirectUri());
+      });
+  }, []);
 
   useEffect(() => {
     if (!state || remoteCheckComplete.current || !isCompleteS3Settings(s3Settings)) {
@@ -375,6 +536,7 @@ export function App() {
       <main className="loading-screen">
         <Database size={28} />
         <span>Loading local residency store</span>
+        {message && <p>{message}</p>}
       </main>
     );
   }
@@ -1625,7 +1787,7 @@ function StorageView({
         className="panel form-panel wide"
         onSubmit={(event) => {
           event.preventDefault();
-          localStorage.setItem(S3_SETTINGS_KEY, JSON.stringify(s3Settings));
+          persistS3Settings(s3Settings, { includeSecrets: true });
         }}
       >
         <h2>
@@ -1920,40 +2082,25 @@ function CredentialMintForm({
 }: {
   setS3Settings: React.Dispatch<React.SetStateAction<Partial<DirectS3Settings>>>;
 }) {
-  const [authUrl, setAuthUrl] = useState<string>("");
+  const [clientId, setClientId] = useState<string>(BYOS_CLIENT_ID);
   const [status, setStatus] = useState<string>("");
   const [busy, setBusy] = useState(false);
-
-  const readStoredSession = (): OAuthPkceSession => {
-    const raw = localStorage.getItem(OAUTH_SESSION_KEY);
-    if (!raw) {
-      throw new Error("Create an OAuth authorization URL first.");
-    }
-    return JSON.parse(raw) as OAuthPkceSession;
-  };
 
   return (
     <form
       className="panel form-panel wide"
       onSubmit={(event) => {
         event.preventDefault();
-        const form = event.currentTarget;
-        const data = new FormData(form);
-        const config: OAuthPkceConfig = {
-          authorizationEndpoint: String(data.get("authorizationEndpoint")),
-          tokenEndpoint: String(data.get("tokenEndpoint")),
-          clientId: String(data.get("clientId")),
-          redirectUri: String(data.get("redirectUri")),
-          scope: String(data.get("scope")),
-          credentialMintEndpoint: String(data.get("credentialMintEndpoint")),
-          audience: String(data.get("audience") || "")
-        };
+        const cleanClientId = clientId.trim();
+        if (!cleanClientId) {
+          setStatus("Enter the approved BYOS connected-app client ID.");
+          return;
+        }
         setBusy(true);
-        void createOAuthPkceSession(config)
+        void createOAuthPkceSession(byosConfig(cleanClientId))
           .then((session) => {
-            localStorage.setItem(OAUTH_SESSION_KEY, JSON.stringify(session));
-            setAuthUrl(session.authorizationUrl);
-            setStatus("OAuth URL created.");
+            sessionStorage.setItem(OAUTH_SESSION_KEY, JSON.stringify(session));
+            window.location.assign(session.authorizationUrl);
           })
           .catch((error: unknown) => {
             setStatus(error instanceof Error ? error.message : String(error));
@@ -1962,87 +2109,86 @@ function CredentialMintForm({
       }}
     >
       <h2>
-        <ShieldCheck size={18} /> OAuth Credential Minting
+        <ShieldCheck size={18} /> BYOS Authorization
       </h2>
-      <div className="field-row three">
-        <label>
-          Authorization endpoint
-          <input name="authorizationEndpoint" placeholder="https://issuer/authorize" />
-        </label>
-        <label>
-          Token endpoint
-          <input name="tokenEndpoint" placeholder="https://issuer/oauth/token" />
-        </label>
-        <label>
-          Credential endpoint
-          <input name="credentialMintEndpoint" placeholder="https://api.example/s3" />
-        </label>
-      </div>
-      <div className="field-row three">
+      <div className="field-row">
         <label>
           Client ID
-          <input name="clientId" />
+          <input
+            name="clientId"
+            value={clientId}
+            onChange={(event) => setClientId(event.target.value)}
+            placeholder="client_xxx"
+          />
         </label>
         <label>
           Redirect URI
-          <input name="redirectUri" defaultValue={window.location.origin} />
-        </label>
-        <label>
-          Scope
-          <input name="scope" defaultValue="openid profile" />
+          <input value={callbackRedirectUri()} readOnly />
         </label>
       </div>
-      <label>
-        Audience
-        <input name="audience" />
-      </label>
+      <dl className="definition-list">
+        <dt>Authorization</dt>
+        <dd>{`${BYOS_BASE}/oauth2/auth`}</dd>
+        <dt>Token</dt>
+        <dd>{`${BYOS_BASE}/oauth2/token`}</dd>
+        <dt>Credentials</dt>
+        <dd>{`${BYOS_BASE}/oauth2/protocol-credentials`}</dd>
+        <dt>Scope</dt>
+        <dd>{BYOS_SCOPE}</dd>
+      </dl>
       <div className="button-row">
         <button type="submit" disabled={busy}>
-          <ShieldCheck size={16} /> Create OAuth URL
+          <ShieldCheck size={16} /> Connect BYOS
         </button>
-        {authUrl && (
-          <a className="link-button" href={authUrl} target="_blank" rel="noreferrer">
-            Open authorization
-          </a>
-        )}
-      </div>
-      <div className="field-row three">
-        <label>
-          Authorization code
-          <input name="authorizationCode" />
-        </label>
-        <label>
-          Returned state
-          <input name="returnedState" />
-        </label>
-        <div className="button-align">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              const form = document.activeElement?.closest("form") ?? undefined;
-              const formData = form ? new FormData(form) : new FormData();
-              const code = String(formData.get("authorizationCode") || "");
-              const returnedState = String(formData.get("returnedState") || "");
-              setBusy(true);
-              void exchangeAuthorizationCode(readStoredSession(), code, returnedState)
-                .then((token) =>
-                  mintS3Credentials(readStoredSession().config.credentialMintEndpoint, token.access_token)
-                )
-                .then((settings) => {
-                  setS3Settings(settings);
-                  localStorage.setItem(S3_SETTINGS_KEY, JSON.stringify(settings));
-                  setStatus("S3 credentials minted.");
-                })
-                .catch((error: unknown) => {
-                  setStatus(error instanceof Error ? error.message : String(error));
-                })
-                .finally(() => setBusy(false));
-            }}
-          >
-            <Download size={16} /> Exchange code
-          </button>
-        </div>
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          onClick={() => {
+            const token = readOAuthToken();
+            if (!token) {
+              setStatus("No active BYOS OAuth token in this browser session.");
+              return;
+            }
+            setBusy(true);
+            void mintS3Credentials(`${BYOS_BASE}/oauth2/protocol-credentials`, token.accessToken, {
+              endpoint: BYOS_BASE,
+              region: BYOS_REGION,
+              prefix: BYOS_PREFIX,
+              forcePathStyle: true,
+              label: "Residency Days"
+            })
+              .then((settings) => {
+                setS3Settings(settings);
+                persistS3Settings(settings, { includeSecrets: false });
+                setStatus("Fresh BYOS S3 credentials minted.");
+              })
+              .catch((error: unknown) => {
+                setStatus(error instanceof Error ? error.message : String(error));
+              })
+              .finally(() => setBusy(false));
+          }}
+        >
+          <RotateCcw size={16} /> Refresh credentials
+        </button>
+        <button
+          type="button"
+          className="danger"
+          disabled={busy}
+          onClick={() => {
+            clearOAuthState();
+            setS3Settings({
+              endpoint: BYOS_BASE,
+              region: BYOS_REGION,
+              prefix: BYOS_PREFIX,
+              forcePathStyle: true
+            });
+            localStorage.removeItem(S3_SETTINGS_KEY);
+            setStatus("BYOS session cleared.");
+          }}
+        >
+          <Trash2 size={16} /> Clear BYOS session
+        </button>
       </div>
       {status && <p className="inline-status">{status}</p>}
     </form>

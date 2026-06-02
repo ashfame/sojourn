@@ -45,19 +45,36 @@ npx playwright install-deps chromium
 
 The dependency installer may require sudo on Linux.
 
-## S3 Setup
+## BYOS S3 Setup
 
-The app signs S3-compatible requests directly in the browser. Use short-lived, tightly scoped credentials or the built-in OAuth PKCE credential-minting flow.
+The app signs BYOS S3-compatible requests directly in the browser. BYOS credentials are short-lived and app-scoped.
 
-The OAuth flow works entirely in the browser:
+Production BYOS defaults:
 
-1. Enter the authorization endpoint, token endpoint, client ID, redirect URI, scope, optional audience, and credential-minting endpoint.
-2. Create and open the PKCE authorization URL.
-3. Paste the returned authorization code and state.
-4. The browser exchanges the code for an access token and calls the credential-minting endpoint.
-5. The credential endpoint returns scoped S3-compatible settings.
+- Auth/API/S3 endpoint: `https://byos.ashfame.com`
+- Signing region: `us-east-1`
+- Scope: `storage:app storage:s3`
+- Request style: path-style S3 URLs
 
-The credential endpoint should return either a direct settings object or `{ "s3": { ... } }` with:
+The browser OAuth flow is authorization-code PKCE. It is not an OIDC sign-in flow and does not request `openid`, `profile`, `email`, or `offline_access`.
+
+1. Register and approve the app in BYOS connected apps.
+2. Set `VITE_BYOS_CLIENT_ID` for builds, or enter the approved client ID in the S3 view.
+3. Click `Connect BYOS`.
+4. BYOS redirects back to the app with `code` and `state`.
+5. The app verifies state, exchanges the code at `/oauth2/token`, and requests S3 credentials at `/oauth2/protocol-credentials`.
+6. The app uses `response.grant.external_alias` as the S3 bucket name.
+
+The BYOS credential endpoint returns:
+
+- `access_key_id`
+- `secret`
+- `grant.external_alias`
+- `credential.expires_at` or `grant.expires_at`
+
+The S3 secret is kept in memory for the browser session. It is not written to local storage by the BYOS flow; reloads can refresh S3 credentials while the OAuth access token remains valid in session storage.
+
+Generic S3-compatible settings are still accepted manually:
 
 - `endpoint`
 - `bucket`

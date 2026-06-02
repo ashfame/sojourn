@@ -32,25 +32,40 @@ import {
   deleteAttachmentBlob,
   storeAttachmentBlob
 } from "../storage/attachments";
-import { SqliteWorkingCache } from "../storage/sqliteCache";
 import { createExportPackage } from "../storage/snapshot";
 import type { DataWorkerRequest, DataWorkerResponse } from "./dataWorkerProtocol";
+import type { SqliteWorkingCache } from "../storage/sqliteCache";
 
 let statePromise: Promise<AppState> | undefined;
 let sqliteCachePromise: Promise<SqliteWorkingCache | undefined> | undefined;
 
 const nowIso = (): string => new Date().toISOString();
 
+const openSqliteCache = async (): Promise<SqliteWorkingCache | undefined> => {
+  try {
+    const module = await import("../storage/sqliteCache");
+    return module.SqliteWorkingCache.open();
+  } catch (error) {
+    console.warn("SQLite WASM cache module unavailable", error);
+    return undefined;
+  }
+};
+
+const warmSqliteCache = (state: AppState): void => {
+  sqliteCachePromise ??= openSqliteCache();
+  void sqliteCachePromise
+    .then((sqliteCache) => {
+      sqliteCache?.saveState(state);
+    })
+    .catch((error: unknown) => {
+      console.warn("SQLite WASM cache write failed", error);
+    });
+};
+
 const getState = async (): Promise<AppState> => {
   statePromise ??= (async () => {
-    sqliteCachePromise ??= SqliteWorkingCache.open();
-    const sqliteCache = await sqliteCachePromise;
-    const sqliteState = sqliteCache?.loadState();
-    if (sqliteState) {
-      return sqliteState;
-    }
     const indexedState = await loadAppState();
-    sqliteCache?.saveState(indexedState);
+    warmSqliteCache(indexedState);
     return indexedState;
   })();
   return statePromise;
@@ -65,10 +80,8 @@ const persistMutation = async (next: AppState): Promise<AppState> => {
     last_saved_at: nowIso()
   };
   statePromise = Promise.resolve(mutated);
-  sqliteCachePromise ??= SqliteWorkingCache.open();
-  const sqliteCache = await sqliteCachePromise;
-  sqliteCache?.saveState(mutated);
   await saveAppState(mutated);
+  warmSqliteCache(mutated);
   return mutated;
 };
 
@@ -149,10 +162,8 @@ const handleRequest = async (request: DataWorkerRequest): Promise<DataWorkerResp
     case "reset": {
       const reset = await deleteAllData();
       await clearOpfsAttachments();
-      sqliteCachePromise ??= SqliteWorkingCache.open();
-      const sqliteCache = await sqliteCachePromise;
-      sqliteCache?.saveState(reset);
       statePromise = Promise.resolve(reset);
+      warmSqliteCache(reset);
       return { id: request.id, ok: true, type: "state", payload: reset };
     }
 
@@ -417,10 +428,8 @@ const handleRequest = async (request: DataWorkerRequest): Promise<DataWorkerResp
         }))
       };
       statePromise = Promise.resolve(next);
-      sqliteCachePromise ??= SqliteWorkingCache.open();
-      const sqliteCache = await sqliteCachePromise;
-      sqliteCache?.saveState(next);
       await saveAppState(next);
+      warmSqliteCache(next);
       return { id: request.id, ok: true, type: "state", payload: next };
     }
 
@@ -439,10 +448,8 @@ const handleRequest = async (request: DataWorkerRequest): Promise<DataWorkerResp
         }))
       };
       statePromise = Promise.resolve(next);
-      sqliteCachePromise ??= SqliteWorkingCache.open();
-      const sqliteCache = await sqliteCachePromise;
-      sqliteCache?.saveState(next);
       await saveAppState(next);
+      warmSqliteCache(next);
       return { id: request.id, ok: true, type: "state", payload: next };
     }
 
@@ -461,10 +468,8 @@ const handleRequest = async (request: DataWorkerRequest): Promise<DataWorkerResp
         }))
       };
       statePromise = Promise.resolve(next);
-      sqliteCachePromise ??= SqliteWorkingCache.open();
-      const sqliteCache = await sqliteCachePromise;
-      sqliteCache?.saveState(next);
       await saveAppState(next);
+      warmSqliteCache(next);
       return { id: request.id, ok: true, type: "state", payload: next };
     }
 
@@ -477,9 +482,7 @@ const handleRequest = async (request: DataWorkerRequest): Promise<DataWorkerResp
       };
       const restored = await replaceAppState(next);
       statePromise = Promise.resolve(restored);
-      sqliteCachePromise ??= SqliteWorkingCache.open();
-      const sqliteCache = await sqliteCachePromise;
-      sqliteCache?.saveState(restored);
+      warmSqliteCache(restored);
       return { id: request.id, ok: true, type: "state", payload: restored };
     }
   }

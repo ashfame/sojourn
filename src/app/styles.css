@@ -114,11 +114,18 @@ code {
 
 .loading-screen {
   min-height: 100vh;
-  display: flex;
+  display: grid;
   align-items: center;
   justify-content: center;
   gap: 0.7rem;
   color: #405349;
+  text-align: center;
+}
+
+.loading-screen p {
+  max-width: min(34rem, calc(100vw - 2rem));
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .app-shell {
