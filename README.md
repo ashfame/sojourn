@@ -45,29 +45,48 @@ npx playwright install-deps chromium
 
 The dependency installer may require sudo on Linux.
 
-## GitHub Pages
+## CI
 
-The app is deployed from `main` by GitHub Actions after typecheck, lint, unit tests, and Playwright tests pass.
+GitHub Actions runs on pushes and pull requests to `main`:
 
-Production URL:
+- TypeScript typecheck.
+- ESLint.
+- Vitest unit tests.
+- Static production build.
+- Playwright browser tests with Chromium dependencies installed on the runner.
 
-```text
-https://ashfame.github.io/sojourn/
+## Static Build
+
+Build deployable static assets into `dist`:
+
+```bash
+npm run build:static
 ```
 
-The Pages build sets `VITE_BASE_PATH=/sojourn/` so Vite assets and the service worker are served from the repository subpath.
+`npm run build` is an alias for the same command.
 
-GitHub Actions configuration:
+The generated `dist` directory can be deployed to any static host that can serve `index.html`, JavaScript, CSS, WASM, worker files, and `sw.js`.
 
-- Pages source should be `GitHub Actions`.
-- Optional repository Actions variable: `VITE_BYOS_CLIENT_ID`.
+If the app is hosted from a subpath instead of the domain root, set `VITE_BASE_PATH` during the build:
 
-If `VITE_BYOS_CLIENT_ID` is not set, the app still works, but users must enter the approved BYOS connected-app client ID in the S3 view before clicking `Connect BYOS`.
+```bash
+VITE_BASE_PATH=/sojourn/ npm run build:static
+```
 
-GitHub Pages does not support setting custom COOP/COEP response headers for this static site. The app therefore uses IndexedDB as the durable browser cache on Pages. OPFS-backed SQLite is still used on hosts that provide:
+If you know the approved BYOS connected-app client ID at build time, set:
+
+```bash
+VITE_BYOS_CLIENT_ID=client_xxx npm run build:static
+```
+
+If `VITE_BYOS_CLIENT_ID` is not set, the app still works, but users must enter the approved client ID in the S3 view before clicking `Connect BYOS`.
+
+For OPFS-backed SQLite, configure the static host to send:
 
 - `Cross-Origin-Opener-Policy: same-origin`
 - `Cross-Origin-Embedder-Policy: require-corp`
+
+If those headers are unavailable, the app uses IndexedDB as the durable browser cache.
 
 ## BYOS S3 Setup
 
@@ -83,10 +102,11 @@ Production BYOS defaults:
 The browser OAuth flow is authorization-code PKCE. It is not an OIDC sign-in flow and does not request `openid`, `profile`, `email`, or `offline_access`.
 
 1. Register and approve the app in BYOS connected apps.
-2. Add this redirect URI to the BYOS connected app:
+2. Add your deployed app URL as a redirect URI in the BYOS connected app. Examples:
 
 ```text
-https://ashfame.github.io/sojourn/
+https://example.com/
+https://example.com/sojourn/
 ```
 
 3. Set `VITE_BYOS_CLIENT_ID` for builds, or enter the approved client ID in the S3 view.
