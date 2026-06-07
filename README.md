@@ -45,6 +45,30 @@ npx playwright install-deps chromium
 
 The dependency installer may require sudo on Linux.
 
+## GitHub Pages
+
+The app is deployed from `main` by GitHub Actions after typecheck, lint, unit tests, and Playwright tests pass.
+
+Production URL:
+
+```text
+https://ashfame.github.io/sojourn/
+```
+
+The Pages build sets `VITE_BASE_PATH=/sojourn/` so Vite assets and the service worker are served from the repository subpath.
+
+GitHub Actions configuration:
+
+- Pages source should be `GitHub Actions`.
+- Optional repository Actions variable: `VITE_BYOS_CLIENT_ID`.
+
+If `VITE_BYOS_CLIENT_ID` is not set, the app still works, but users must enter the approved BYOS connected-app client ID in the S3 view before clicking `Connect BYOS`.
+
+GitHub Pages does not support setting custom COOP/COEP response headers for this static site. The app therefore uses IndexedDB as the durable browser cache on Pages. OPFS-backed SQLite is still used on hosts that provide:
+
+- `Cross-Origin-Opener-Policy: same-origin`
+- `Cross-Origin-Embedder-Policy: require-corp`
+
 ## BYOS S3 Setup
 
 The app signs BYOS S3-compatible requests directly in the browser. BYOS credentials are short-lived and app-scoped.
@@ -59,11 +83,17 @@ Production BYOS defaults:
 The browser OAuth flow is authorization-code PKCE. It is not an OIDC sign-in flow and does not request `openid`, `profile`, `email`, or `offline_access`.
 
 1. Register and approve the app in BYOS connected apps.
-2. Set `VITE_BYOS_CLIENT_ID` for builds, or enter the approved client ID in the S3 view.
-3. Click `Connect BYOS`.
-4. BYOS redirects back to the app with `code` and `state`.
-5. The app verifies state, exchanges the code at `/oauth2/token`, and requests S3 credentials at `/oauth2/protocol-credentials`.
-6. The app uses `response.grant.external_alias` as the S3 bucket name.
+2. Add this redirect URI to the BYOS connected app:
+
+```text
+https://ashfame.github.io/sojourn/
+```
+
+3. Set `VITE_BYOS_CLIENT_ID` for builds, or enter the approved client ID in the S3 view.
+4. Click `Connect BYOS`.
+5. BYOS redirects back to the app with `code` and `state`.
+6. The app verifies state, exchanges the code at `/oauth2/token`, and requests S3 credentials at `/oauth2/protocol-credentials`.
+7. The app uses `response.grant.external_alias` as the S3 bucket name.
 
 The BYOS credential endpoint returns:
 
