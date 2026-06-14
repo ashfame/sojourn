@@ -16,7 +16,10 @@ export type WindowDefinition =
   | { type: "fiscal_year"; startMonth: number; startDay: number }
   | { type: "rolling_days"; days: number };
 
-export type CountingConvention = "entry_exit_count" | "presence_any_part";
+export type CountingConvention =
+  | "entry_exit_count"
+  | "presence_any_part"
+  | "exclude_exit_day";
 
 export interface Stay {
   id: string;
@@ -33,6 +36,7 @@ export interface TimelineStay extends Stay {
   source: "explicit" | "inferred_home_base";
   countEntryDate: string;
   countExitDate: string;
+  knownExitDate?: string | undefined;
   durationDays: number;
   evidence: EvidenceItem[];
   evidenceStatus: EvidenceStatus;

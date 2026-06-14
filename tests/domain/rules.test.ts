@@ -52,6 +52,60 @@ describe("rule engine", () => {
     expect(india?.remaining).toBe(49);
   });
 
+  it("can exclude the exit day for nights-style counting", () => {
+    const data = createInitialData();
+    data.rules.push({
+      id: "rule_india_nights",
+      label: "India nights",
+      countryScope: ["IN"],
+      threshold: 59,
+      direction: "ceiling",
+      window: { type: "fiscal_year", startMonth: 4, startDay: 1 },
+      counting: "exclude_exit_day",
+      description: "Exit day does not count"
+    });
+    data.stays.push({
+      id: "stay_india",
+      country: "IN",
+      entryDate: "2026-04-10",
+      exitDate: "2026-04-19",
+      label: "Family visit",
+      createdAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-04-01T00:00:00.000Z"
+    });
+
+    const nights = progressByRule(data, "2026-06-10").get("rule_india_nights");
+
+    expect(nights?.usedDays).toBe(9);
+  });
+
+  it("does not drop the reporting period end when exit-day exclusion falls after the window", () => {
+    const data = createInitialData();
+    data.rules.push({
+      id: "rule_fr_nights",
+      label: "France nights",
+      countryScope: ["FR"],
+      threshold: 90,
+      direction: "ceiling",
+      window: { type: "calendar_year" },
+      counting: "exclude_exit_day",
+      description: "Exit day does not count"
+    });
+    data.stays.push({
+      id: "stay_fr_long",
+      country: "FR",
+      entryDate: "2026-12-30",
+      exitDate: "2027-01-05",
+      label: "Year boundary",
+      createdAt: "2026-12-01T00:00:00.000Z",
+      updatedAt: "2026-12-01T00:00:00.000Z"
+    });
+
+    const france = progressByRule(data, "2026-12-31").get("rule_fr_nights");
+
+    expect(france?.usedDays).toBe(2);
+  });
+
   it("counts Schengen days in the rolling 180-day window", () => {
     const data = createInitialData();
     const schengen = progressByRule(data, "2026-06-10").get("rule_schengen_90_180");

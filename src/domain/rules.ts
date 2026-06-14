@@ -51,7 +51,8 @@ export const createTimeline = (
     countEntryDate: string,
     countExitDate: string,
     durationEntryDate = countEntryDate,
-    durationExitDate = countExitDate
+    durationExitDate = countExitDate,
+    knownExitDate = stay.exitDate
   ): void => {
     const evidence = evidenceByStay.get(stay.id) ?? [];
     timeline.push({
@@ -59,6 +60,7 @@ export const createTimeline = (
       source,
       countEntryDate,
       countExitDate,
+      ...(knownExitDate ? { knownExitDate } : {}),
       durationDays: daysInclusive(durationEntryDate, durationExitDate),
       evidence,
       evidenceStatus: scoreEvidence(evidence, { ongoing: !stay.exitDate })
@@ -88,13 +90,15 @@ export const createTimeline = (
       );
     }
     const durationStart = maxDate(stay.entryDate, cursor);
+    const actualStayEnd = endDateFor(stay, asOf);
     pushStay(
       { ...stay, exitDate: stayEnd },
       "explicit",
       stay.entryDate,
-      stayEnd,
+      actualStayEnd,
       isAfter(durationStart, stayEnd) ? stay.entryDate : durationStart,
-      stayEnd
+      stayEnd,
+      stay.exitDate
     );
     cursor = addDays(maxDate(cursor, stayEnd), 1);
     trailingHomeStartCandidate =
@@ -173,7 +177,12 @@ const countRuleDays = (
       continue;
     }
     const start = maxDate(stay.countEntryDate, periodStart);
-    const end = minDate(stay.countExitDate, periodEnd);
+    const clippedEnd = minDate(stay.countExitDate, periodEnd);
+    const shouldExcludeExit =
+      rule.counting === "exclude_exit_day" &&
+      stay.knownExitDate !== undefined &&
+      !isAfter(stay.knownExitDate, periodEnd);
+    const end = shouldExcludeExit ? addDays(clippedEnd, -1) : clippedEnd;
     if (isAfter(start, end)) {
       continue;
     }

@@ -1,5 +1,5 @@
 import { SCHENGEN_COUNTRIES } from "./countries";
-import type { AppData, EvidenceItem, Rule, Stay } from "./types";
+import type { AppData, EvidenceItem, Rule, Stay, WindowDefinition } from "./types";
 
 const createdAt = "2026-06-10T00:00:00.000Z";
 
@@ -74,6 +74,25 @@ export const defaultRules: Rule[] = [
   }
 ];
 
+const starterStays = [
+  stay("stay_nepal_2026", "NP", "2026-04-02", "2026-05-23", "Pokhara"),
+  stay("stay_spain_2026", "ES", "2026-05-24", "2026-06-03", "Tenerife"),
+  stay("stay_poland_2026", "PL", "2026-06-03", "2026-06-08", "Krakow, WCEU")
+];
+
+const starterEvidence = [
+  evidence("ev_np_visa", "stay_nepal_2026", "entry_stamp", "Visa on arrival stamp", "2026-04-02"),
+  evidence("ev_np_flight", "stay_nepal_2026", "flight_ticket", "Flight · DXB → KTM", "2026-04-02"),
+  evidence("ev_np_stay", "stay_nepal_2026", "accommodation", "Stay receipts · Pokhara"),
+  evidence("ev_es_visa", "stay_spain_2026", "visa", "Schengen visa (Type C)"),
+  evidence("ev_es_ticket", "stay_spain_2026", "flight_ticket", "Flight ticket · KTM → TFN", "2026-05-24"),
+  evidence("ev_es_boarding", "stay_spain_2026", "boarding_pass", "Boarding pass · May 24", "2026-05-24"),
+  evidence("ev_es_hotel", "stay_spain_2026", "accommodation", "Hotel invoice · RF San Borondon"),
+  evidence("ev_pl_ticket", "stay_poland_2026", "flight_ticket", "Flight · TFN → KRK", "2026-06-03"),
+  evidence("ev_pl_event", "stay_poland_2026", "other", "WCEU ticket · Krakow"),
+  evidence("ev_pl_hotel", "stay_poland_2026", "accommodation", "Hotel booking · Krakow")
+];
+
 export const createInitialData = (): AppData => ({
   schemaVersion: 1,
   settings: {
@@ -82,30 +101,34 @@ export const createInitialData = (): AppData => ({
     legalResidence: "AE",
     countEntryExitDays: true
   },
-  stays: [
-    stay("stay_nepal_2026", "NP", "2026-04-02", "2026-05-23", "Pokhara"),
-    stay("stay_spain_2026", "ES", "2026-05-24", "2026-06-03", "Tenerife"),
-    stay("stay_poland_2026", "PL", "2026-06-03", "2026-06-08", "Krakow, WCEU")
-  ],
-  evidence: [
-    evidence("ev_np_visa", "stay_nepal_2026", "entry_stamp", "Visa on arrival stamp", "2026-04-02"),
-    evidence("ev_np_flight", "stay_nepal_2026", "flight_ticket", "Flight · DXB → KTM", "2026-04-02"),
-    evidence("ev_np_stay", "stay_nepal_2026", "accommodation", "Stay receipts · Pokhara"),
-    evidence("ev_es_visa", "stay_spain_2026", "visa", "Schengen visa (Type C)"),
-    evidence("ev_es_ticket", "stay_spain_2026", "flight_ticket", "Flight ticket · KTM → TFN", "2026-05-24"),
-    evidence("ev_es_boarding", "stay_spain_2026", "boarding_pass", "Boarding pass · May 24", "2026-05-24"),
-    evidence("ev_es_hotel", "stay_spain_2026", "accommodation", "Hotel invoice · RF San Borondon"),
-    evidence("ev_pl_ticket", "stay_poland_2026", "flight_ticket", "Flight · TFN → KRK", "2026-06-03"),
-    evidence("ev_pl_event", "stay_poland_2026", "other", "WCEU ticket · Krakow"),
-    evidence("ev_pl_hotel", "stay_poland_2026", "accommodation", "Hotel booking · Krakow")
-  ],
-  rules: defaultRules,
+  stays: starterStays.map((item) => ({ ...item })),
+  evidence: starterEvidence.map((item) => ({ ...item })),
+  rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] })),
   updatedAt: createdAt
 });
 
+const windowSignature = (window: WindowDefinition): string => {
+  if (window.type === "fiscal_year") {
+    return `fiscal:${window.startMonth}:${window.startDay}`;
+  }
+  if (window.type === "rolling_days") {
+    return `rolling:${window.days}`;
+  }
+  return "calendar";
+};
+
+const ruleSignature = (rule: Rule): string =>
+  [
+    [...new Set(rule.countryScope.map((country) => country.toUpperCase()))].sort().join(","),
+    rule.direction,
+    rule.threshold,
+    windowSignature(rule.window),
+    rule.counting
+  ].join("|");
+
 export const migrateAppData = (data: AppData): AppData => {
   let changed = false;
-  const rules = data.rules.map((rule) => {
+  const migratedRules = data.rules.map((rule) => {
     if (rule.id === "rule_india_nri" && rule.threshold === 60) {
       changed = true;
       return {
@@ -119,5 +142,27 @@ export const migrateAppData = (data: AppData): AppData => {
     }
     return rule;
   });
-  return changed ? { ...data, rules } : data;
+
+  const seenRules = new Set<string>();
+  const rules: Rule[] = [];
+  for (const rule of migratedRules) {
+    const signature = ruleSignature(rule);
+    if (seenRules.has(signature)) {
+      changed = true;
+      continue;
+    }
+    seenRules.add(signature);
+    rules.push(rule);
+  }
+
+  const stayIds = new Set(data.stays.map((stay) => stay.id));
+  const evidenceIds = new Set(data.evidence.map((item) => item.id));
+  const missingStarterEvidence = starterEvidence.filter(
+    (item) => stayIds.has(item.stayId) && !evidenceIds.has(item.id)
+  );
+  if (missingStarterEvidence.length > 0) {
+    changed = true;
+  }
+
+  return changed ? { ...data, evidence: [...data.evidence, ...missingStarterEvidence], rules } : data;
 };

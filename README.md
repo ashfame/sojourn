@@ -71,12 +71,19 @@ VITE_BASE_PATH=/sojourn/ npm run build:static
 - The main screen is a scrollable stay timeline.
 - Each stay expands inline to show evidence.
 - Explicit stays can be edited or deleted from the expanded stay panel.
+- Evidence can be added, edited, or deleted from the expanded stay panel.
 - Evidence completeness is summarized as `x/4` on every stay.
 - Target cards use one progress component with two meanings:
   - `minimum`: fill toward a target, safe when complete.
   - `ceiling`: spend down a budget, warning near the edge.
 - Targets are configurable. Each rule owns its countries, threshold, direction, counting convention, and window.
+- Duplicate targets with the same countries, threshold, direction, window, and counting policy are blocked.
+- Counting policies are per-target:
+  - inclusive dates: entry and exit dates count,
+  - exclude exit date: nights-style counting,
+  - any touched date: date-only inclusive, reserved for future time-aware stays.
 - For ceiling rules, the threshold is the maximum safe day count. For example, "under 60" is configured as `59`.
+- The default gap country is only used to infer unlabeled timeline gaps; nationality and legal residence are profile metadata.
 - UAE is suggested as a calendar-year minimum.
 - India is suggested as an Apr-Mar fiscal-year ceiling.
 - Schengen is suggested as a rolling 180-day window over a country set.

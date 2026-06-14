@@ -21,7 +21,7 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { countryInitials, countryName } from "../domain/countries";
+import { countryFlag, countryName } from "../domain/countries";
 import { formatDateRange, isBefore, todayString } from "../domain/dates";
 import { evidenceLabel } from "../domain/evidence";
 import { createId } from "../domain/seed";
@@ -172,6 +172,35 @@ const windowFromForm = (formData: FormData): WindowDefinition => {
   return { type: "calendar_year" };
 };
 
+const windowSignature = (window: WindowDefinition): string => {
+  if (window.type === "fiscal_year") {
+    return `fiscal:${window.startMonth}:${window.startDay}`;
+  }
+  if (window.type === "rolling_days") {
+    return `rolling:${window.days}`;
+  }
+  return "calendar";
+};
+
+const ruleSignature = (rule: Pick<Rule, "countryScope" | "direction" | "threshold" | "window" | "counting">): string =>
+  [
+    [...new Set(rule.countryScope.map((country) => country.toUpperCase()))].sort().join(","),
+    rule.direction,
+    rule.threshold,
+    windowSignature(rule.window),
+    rule.counting
+  ].join("|");
+
+const hasEquivalentRule = (rules: Rule[], candidate: Rule, ignoredRuleId?: string): boolean =>
+  rules.some((rule) => rule.id !== ignoredRuleId && ruleSignature(rule) === ruleSignature(candidate));
+
+const countingDescriptions: Record<CountingConvention, string> = {
+  entry_exit_count: "Counts both the arrival date and departure date.",
+  exclude_exit_day: "Counts the arrival date, but not the departure date.",
+  presence_any_part:
+    "Counts any date touched by the stay. With date-only stays this matches inclusive counting."
+};
+
 export function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [metadata, setMetadata] = useState<StorageMetadata>({ backend: "indexeddb" });
@@ -179,6 +208,7 @@ export function App() {
   const [showStayForm, setShowStayForm] = useState(false);
   const [showTargetEditor, setShowTargetEditor] = useState(false);
   const [editingStayId, setEditingStayId] = useState<string | null>(null);
+  const [editingEvidenceId, setEditingEvidenceId] = useState<string | null>(null);
   const [proofStayId, setProofStayId] = useState<string | null>(null);
   const [projection, setProjection] = useState<ProjectionInput>(defaultProjection);
   const [message, setMessage] = useState<string>("");
@@ -330,23 +360,71 @@ export function App() {
       return;
     }
     const formData = new FormData(form);
-    const file = formData.get("file");
-    const evidenceDate = optionalString(formData.get("date"));
-    const evidence: EvidenceItem = {
-      id: createId("evidence"),
-      stayId,
-      type: String(formData.get("type")) as EvidenceType,
-      title: String(formData.get("title") || (file instanceof File ? file.name : "Evidence")),
-      ...(evidenceDate ? { date: evidenceDate } : {}),
-      ...(file instanceof File && file.name ? { fileName: file.name } : {}),
-      ...(file instanceof File && file.type ? { mimeType: file.type } : {}),
-      ...(file instanceof File ? { sizeBytes: file.size } : {}),
-      createdAt: new Date().toISOString()
-    };
+    const evidence = evidenceFromForm(formData, stayId);
     void saveData({ ...data, evidence: [...data.evidence, evidence] }, "Evidence added.");
     form.reset();
     setProofStayId(null);
     setExpandedStayIds((current) => new Set(current).add(stayId));
+  };
+
+  const updateEvidence = (form: HTMLFormElement, item: EvidenceItem): void => {
+    if (!data) {
+      return;
+    }
+    const formData = new FormData(form);
+    const updated = evidenceFromForm(formData, item.stayId, item);
+    void saveData(
+      {
+        ...data,
+        evidence: data.evidence.map((evidence) => (evidence.id === item.id ? updated : evidence))
+      },
+      "Evidence updated."
+    );
+    setEditingEvidenceId(null);
+  };
+
+  const deleteEvidence = (item: EvidenceItem): void => {
+    if (!data) {
+      return;
+    }
+    void saveData(
+      {
+        ...data,
+        evidence: data.evidence.filter((evidence) => evidence.id !== item.id)
+      },
+      "Evidence deleted."
+    );
+    setEditingEvidenceId(null);
+  };
+
+  const evidenceFromForm = (
+    formData: FormData,
+    stayId: string,
+    existing?: EvidenceItem
+  ): EvidenceItem => {
+    const file = formData.get("file");
+    const evidenceDate = optionalString(formData.get("date"));
+    const fileMeta =
+      file instanceof File && file.name
+        ? {
+            fileName: file.name,
+            ...(file.type ? { mimeType: file.type } : {}),
+            sizeBytes: file.size
+          }
+        : {
+            ...(existing?.fileName ? { fileName: existing.fileName } : {}),
+            ...(existing?.mimeType ? { mimeType: existing.mimeType } : {}),
+            ...(existing?.sizeBytes !== undefined ? { sizeBytes: existing.sizeBytes } : {})
+          };
+    return {
+      id: existing?.id ?? createId("evidence"),
+      stayId,
+      type: String(formData.get("type")) as EvidenceType,
+      title: String(formData.get("title") || (file instanceof File ? file.name : "Evidence")),
+      ...(evidenceDate ? { date: evidenceDate } : {}),
+      ...fileMeta,
+      createdAt: existing?.createdAt ?? new Date().toISOString()
+    };
   };
 
   const updateSettings = (form: HTMLFormElement): void => {
@@ -361,7 +439,7 @@ export function App() {
           homeBaseCountry: String(formData.get("homeBaseCountry") ?? "AE").toUpperCase(),
           nationality: String(formData.get("nationality") ?? "IN").toUpperCase(),
           legalResidence: String(formData.get("legalResidence") ?? "AE").toUpperCase(),
-          countEntryExitDays: formData.get("countEntryExitDays") === "on"
+          countEntryExitDays: data.settings.countEntryExitDays
         }
       },
       "Settings saved."
@@ -388,6 +466,10 @@ export function App() {
       counting: String(formData.get("counting")) as CountingConvention,
       description: String(formData.get("description") || "").trim()
     };
+    if (hasEquivalentRule(data.rules, nextRule, ruleId)) {
+      setMessage("That target already exists.");
+      return;
+    }
     const rules = ruleId
       ? data.rules.map((rule) => (rule.id === ruleId ? nextRule : rule))
       : [...data.rules, nextRule];
@@ -397,10 +479,6 @@ export function App() {
 
   const deleteRule = (ruleId: string): void => {
     if (!data) {
-      return;
-    }
-    if (data.rules.length <= 1) {
-      setMessage("Keep at least one target.");
       return;
     }
     void saveData(
@@ -417,6 +495,10 @@ export function App() {
       id: createId("rule"),
       ...suggestion.build()
     };
+    if (hasEquivalentRule(data.rules, rule)) {
+      setMessage("That suggested target is already added.");
+      return;
+    }
     void saveData({ ...data, rules: [...data.rules, rule] }, "Suggested target added.");
     setShowTargetEditor(true);
   };
@@ -452,9 +534,14 @@ export function App() {
       )}
 
       <section className="target-strip" aria-label="Residency targets">
-        {progress.map((item) => (
-          <TargetCard key={item.rule.id} progress={item} />
-        ))}
+        {progress.length > 0 ? (
+          progress.map((item) => <TargetCard key={item.rule.id} progress={item} />)
+        ) : (
+          <article className="target-card empty-target-card">
+            <h2>No targets configured</h2>
+            <p>Add a target to start tracking day-count pressure.</p>
+          </article>
+        )}
       </section>
 
       <div className="target-actions">
@@ -527,6 +614,7 @@ export function App() {
             onToggle={() => toggleStay(stay.id)}
             addingProof={proofStayId === stay.id}
             editing={editingStayId === stay.id}
+            editingEvidenceId={editingEvidenceId}
             onStartEdit={() => {
               setEditingStayId(stay.id);
               setProofStayId(null);
@@ -534,9 +622,19 @@ export function App() {
             onCancelEdit={() => setEditingStayId(null)}
             onSaveEdit={(form) => updateStay(form, stay.id)}
             onDelete={() => deleteStay(stay)}
-            onAddProof={() => setProofStayId(stay.id)}
+            onAddProof={() => {
+              setProofStayId(stay.id);
+              setEditingEvidenceId(null);
+            }}
             onCancelProof={() => setProofStayId(null)}
             onSaveProof={(form) => addEvidence(form, stay.id)}
+            onStartEditEvidence={(item) => {
+              setEditingEvidenceId(item.id);
+              setProofStayId(null);
+            }}
+            onCancelEditEvidence={() => setEditingEvidenceId(null)}
+            onSaveEvidenceEdit={updateEvidence}
+            onDeleteEvidence={deleteEvidence}
           />
         ))}
       </section>
@@ -559,7 +657,7 @@ export function App() {
           }}
         >
           <label>
-            Home base
+            Default gap country
             <select name="homeBaseCountry" defaultValue={data.settings.homeBaseCountry}>
               {countryOptions.map((code) => (
                 <option key={code} value={code}>
@@ -567,6 +665,9 @@ export function App() {
                 </option>
               ))}
             </select>
+            <span className="field-help">
+              Used only to infer timeline gaps between explicit stays.
+            </span>
           </label>
           <label>
             Nationality
@@ -577,6 +678,7 @@ export function App() {
                 </option>
               ))}
             </select>
+            <span className="field-help">Profile metadata for suggestions, not day counting.</span>
           </label>
           <label>
             Legal residence
@@ -587,14 +689,7 @@ export function App() {
                 </option>
               ))}
             </select>
-          </label>
-          <label className="checkbox-label">
-            <input
-              name="countEntryExitDays"
-              type="checkbox"
-              defaultChecked={data.settings.countEntryExitDays}
-            />
-            Entry and exit days count
+            <span className="field-help">Profile metadata for suggestions, not day counting.</span>
           </label>
           <button type="submit">
             <Settings size={16} /> Save settings
@@ -646,19 +741,25 @@ function StayRow({
   onToggle,
   addingProof,
   editing,
+  editingEvidenceId,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
   onDelete,
   onAddProof,
   onCancelProof,
-  onSaveProof
+  onSaveProof,
+  onStartEditEvidence,
+  onCancelEditEvidence,
+  onSaveEvidenceEdit,
+  onDeleteEvidence
 }: {
   stay: TimelineStay;
   expanded: boolean;
   onToggle: () => void;
   addingProof: boolean;
   editing: boolean;
+  editingEvidenceId: string | null;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (form: HTMLFormElement) => void;
@@ -666,13 +767,19 @@ function StayRow({
   onAddProof: () => void;
   onCancelProof: () => void;
   onSaveProof: (form: HTMLFormElement) => void;
+  onStartEditEvidence: (item: EvidenceItem) => void;
+  onCancelEditEvidence: () => void;
+  onSaveEvidenceEdit: (form: HTMLFormElement, item: EvidenceItem) => void;
+  onDeleteEvidence: (item: EvidenceItem) => void;
 }) {
   const isHomeBase = stay.source === "inferred_home_base";
   return (
     <article className={`stay-row ${isHomeBase ? "home-base" : ""}`}>
       <span className="timeline-dot" aria-hidden="true" />
       <button type="button" className="stay-summary" onClick={onToggle}>
-        <span className="country-avatar">{countryInitials(stay.country)}</span>
+        <span className="country-avatar" title={countryName(stay.country)}>
+          {countryFlag(stay.country)}
+        </span>
         <span className="stay-copy">
           <strong>{formatStayTitle(stay)}</strong>
           <small>
@@ -713,9 +820,23 @@ function StayRow({
           </div>
           {stay.evidence.length > 0 ? (
             <div className="evidence-list">
-              {stay.evidence.map((item) => (
-                <EvidenceRow key={item.id} item={item} />
-              ))}
+              {stay.evidence.map((item) =>
+                editingEvidenceId === item.id ? (
+                  <EvidenceForm
+                    key={item.id}
+                    item={item}
+                    onCancel={onCancelEditEvidence}
+                    onSave={(form) => onSaveEvidenceEdit(form, item)}
+                  />
+                ) : (
+                  <EvidenceRow
+                    key={item.id}
+                    item={item}
+                    onEdit={() => onStartEditEvidence(item)}
+                    onDelete={() => onDeleteEvidence(item)}
+                  />
+                )
+              )}
             </div>
           ) : (
             <p className="empty-copy">No evidence linked yet.</p>
@@ -802,16 +923,21 @@ function TargetEditor({
           <Target size={18} /> Target settings
         </h2>
         <div className="suggestion-row" aria-label="Suggested targets">
-          {ruleSuggestions.map((suggestion) => (
-            <button
-              key={suggestion.label}
-              type="button"
-              className="secondary"
-              onClick={() => onAddSuggestion(suggestion)}
-            >
-              <Plus size={14} /> {suggestion.label}
-            </button>
-          ))}
+          {ruleSuggestions.map((suggestion) => {
+            const suggestionRule: Rule = { id: suggestion.label, ...suggestion.build() };
+            const alreadyAdded = hasEquivalentRule(rules, suggestionRule);
+            return (
+              <button
+                key={suggestion.label}
+                type="button"
+                className="secondary"
+                disabled={alreadyAdded}
+                onClick={() => onAddSuggestion(suggestion)}
+              >
+                <Plus size={14} /> {alreadyAdded ? "Added" : suggestion.label}
+              </button>
+            );
+          })}
         </div>
       </div>
       <div className="rule-list">
@@ -842,6 +968,9 @@ function RuleForm({
   const startMonth = rule?.window.type === "fiscal_year" ? rule.window.startMonth : 1;
   const startDay = rule?.window.type === "fiscal_year" ? rule.window.startDay : 1;
   const rollingDays = rule?.window.type === "rolling_days" ? rule.window.days : 180;
+  const [selectedCounting, setSelectedCounting] = useState<CountingConvention>(
+    rule?.counting ?? "entry_exit_count"
+  );
   return (
     <form
       className={`rule-form ${rule ? "" : "new-rule"}`}
@@ -911,10 +1040,16 @@ function RuleForm({
         </label>
         <label>
           Counting
-          <select name="counting" defaultValue={rule?.counting ?? "entry_exit_count"}>
-            <option value="entry_exit_count">Entry and exit count</option>
-            <option value="presence_any_part">Presence any part of day</option>
+          <select
+            name="counting"
+            value={selectedCounting}
+            onChange={(event) => setSelectedCounting(event.target.value as CountingConvention)}
+          >
+            <option value="entry_exit_count">Inclusive dates: entry + exit count</option>
+            <option value="exclude_exit_day">Exclude exit date: nights-style</option>
+            <option value="presence_any_part">Any touched date: date-only inclusive</option>
           </select>
+          <span className="field-help">{countingDescriptions[selectedCounting]}</span>
         </label>
         <label className="rule-description-field">
           Description
@@ -932,7 +1067,15 @@ function RuleForm({
   );
 }
 
-function EvidenceRow({ item }: { item: EvidenceItem }) {
+function EvidenceRow({
+  item,
+  onEdit,
+  onDelete
+}: {
+  item: EvidenceItem;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const Icon = evidenceIcons[item.type];
   return (
     <div className="evidence-row">
@@ -945,14 +1088,24 @@ function EvidenceRow({ item }: { item: EvidenceItem }) {
           {item.fileName ? ` · ${item.fileName}` : ""}
         </small>
       </span>
+      <div className="evidence-actions">
+        <button type="button" className="icon-button secondary" aria-label={`Edit ${item.title}`} onClick={onEdit}>
+          <Edit3 size={14} />
+        </button>
+        <button type="button" className="icon-button danger-button" aria-label={`Delete ${item.title}`} onClick={onDelete}>
+          <Trash2 size={14} />
+        </button>
+      </div>
     </div>
   );
 }
 
 function EvidenceForm({
+  item,
   onCancel,
   onSave
 }: {
+  item?: EvidenceItem;
   onCancel: () => void;
   onSave: (form: HTMLFormElement) => void;
 }) {
@@ -966,7 +1119,7 @@ function EvidenceForm({
     >
       <label>
         Type
-        <select name="type" defaultValue="boarding_pass">
+        <select name="type" defaultValue={item?.type ?? "boarding_pass"}>
           {Object.entries(evidenceLabel).map(([value, label]) => (
             <option key={value} value={value}>
               {label}
@@ -976,19 +1129,24 @@ function EvidenceForm({
       </label>
       <label>
         Title
-        <input name="title" placeholder="Boarding pass, visa, hotel invoice" />
+        <input
+          name="title"
+          defaultValue={item?.title ?? ""}
+          placeholder="Boarding pass, visa, hotel invoice"
+        />
       </label>
       <label>
         Date
-        <input name="date" type="date" />
+        <input name="date" type="date" defaultValue={item?.date ?? ""} />
       </label>
       <label>
         File
         <input name="file" type="file" />
+        {item?.fileName && <span className="field-help">Current file: {item.fileName}</span>}
       </label>
       <div className="button-row">
         <button type="submit">
-          <Upload size={15} /> Save proof
+          {item ? <Save size={15} /> : <Upload size={15} />} {item ? "Save proof" : "Add proof"}
         </button>
         <button type="button" className="secondary" onClick={onCancel}>
           <X size={15} /> Cancel

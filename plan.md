@@ -102,7 +102,7 @@ V1 stores file metadata. Blob/file persistence can be added behind the same stor
     | { type: "calendar_year" }
     | { type: "fiscal_year"; startMonth: number; startDay: number }
     | { type: "rolling_days"; days: number };
-  counting: "entry_exit_count" | "presence_any_part";
+  counting: "entry_exit_count" | "exclude_exit_day" | "presence_any_part";
 }
 ```
 
@@ -114,8 +114,7 @@ Country scope can contain multiple countries, which is how Schengen works withou
 - India NRI status: `59` day conservative ceiling for "under 60", Apr-Mar fiscal year, India country scope.
 - Schengen 90/180: `90` day ceiling, rolling 180-day window, Schengen country set.
 
-Entry/exit counting belongs to the rule, not to the stay.
-Every target is user-editable, and multiple targets can share the same country scope.
+Counting belongs to the rule, not to the stay. Targets support inclusive dates, exit-day exclusion, and any-touched-date semantics. Every target is user-editable, and multiple targets can share the same country scope as long as the behavioral rule is not duplicated.
 
 ## Storage Architecture
 
@@ -169,6 +168,7 @@ Future sync should remain browser-only:
 - Rolling windows, especially Schengen 90/180.
 - Leap years.
 - Same-day entry/exit.
+- Exit-day exclusion for nights-style counting.
 - Open-ended current stays.
 - Overlapping boundary days, such as Schengen transfer days and UAE return days.
 - Future projections using hypothetical stays.
@@ -202,7 +202,9 @@ The first rebuild should deliver:
 - Stay editing and deletion.
 - Expandable evidence panels.
 - Evidence metadata creation.
+- Evidence editing and deletion.
 - Target editor for custom countries, thresholds, directions, and tax-year windows.
+- Duplicate target prevention.
 - Projection panel.
 - Settings for home base, nationality, legal residence, and entry/exit policy.
 - IndexedDB-backed `StorageDriver`.

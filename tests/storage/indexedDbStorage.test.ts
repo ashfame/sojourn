@@ -57,4 +57,37 @@ describe("indexedDbStorage", () => {
 
     expect(migrated.rules.find((rule) => rule.id === "rule_india_nri")?.threshold).toBe(59);
   });
+
+  it("removes duplicate persisted targets during migration", () => {
+    const data = createInitialData();
+    const india = data.rules.find((rule) => rule.id === "rule_india_nri");
+    if (!india) {
+      throw new Error("Missing India rule");
+    }
+
+    const migrated = migrateAppData({
+      ...data,
+      rules: [...data.rules, { ...india, id: "rule_india_nri_duplicate", label: "Duplicate" }]
+    });
+
+    expect(migrated.rules.filter((rule) => rule.threshold === india.threshold)).toHaveLength(1);
+  });
+
+  it("restores missing starter evidence without replacing edited evidence", () => {
+    const data = createInitialData();
+    const editedVisa = {
+      ...data.evidence.find((item) => item.id === "ev_es_visa")!,
+      title: "Edited visa title"
+    };
+
+    const migrated = migrateAppData({
+      ...data,
+      evidence: [editedVisa]
+    });
+
+    expect(migrated.evidence.find((item) => item.id === "ev_es_visa")?.title).toBe(
+      "Edited visa title"
+    );
+    expect(migrated.evidence.some((item) => item.id === "ev_es_ticket")).toBe(true);
+  });
 });

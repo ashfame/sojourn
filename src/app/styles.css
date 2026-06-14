@@ -45,6 +45,11 @@ button:hover {
   background: #145743;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 button.secondary {
   border-color: #d5d0c7;
   background: #ffffff;
@@ -67,6 +72,12 @@ button.danger-button:hover {
 
 button.full-width {
   width: 100%;
+}
+
+button.icon-button {
+  width: 2rem;
+  min-height: 2rem;
+  padding: 0;
 }
 
 input,
@@ -93,6 +104,13 @@ label {
   color: #616158;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.field-help {
+  color: #77746b;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 .loading-screen {
@@ -354,7 +372,7 @@ label {
   color: #075340;
   display: grid;
   place-items: center;
-  font-size: 0.78rem;
+  font-size: 1.28rem;
   font-weight: 800;
 }
 
@@ -451,7 +469,7 @@ label {
 
 .evidence-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 0.55rem;
   align-items: center;
 }
@@ -465,6 +483,11 @@ label {
   display: grid;
   gap: 0.08rem;
   font-size: 0.84rem;
+}
+
+.evidence-actions {
+  display: flex;
+  gap: 0.35rem;
 }
 
 .evidence-form {
