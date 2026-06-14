@@ -30,7 +30,7 @@ test("loads the timeline app and edits stay data, evidence, and targets", async 
   await indiaRule.getByLabel("Max or target days").fill("58");
   await indiaRule.getByRole("button", { name: /Save target/ }).click();
   await expect(page.getByText("Target updated.")).toBeVisible();
-  await expect(page.getByText("0 of 58 days used")).toBeVisible();
+  await expect(page.getByLabel("Residency targets").getByText("0 of 58 days used")).toBeVisible();
 
   await page.getByRole("button", { name: "India: under 120" }).click();
   await expect(page.getByText("Suggested target added.")).toBeVisible();
