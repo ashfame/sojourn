@@ -4,7 +4,7 @@ test("loads the timeline app and adds stay evidence", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByText("Sojourn")).toBeVisible();
-  await expect(page.getByText("UAE tax residency")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "UAE tax residency" })).toBeVisible();
   await expect(page.getByLabel("Stay timeline")).toBeVisible();
 
   await expect(page.getByText("Schengen visa")).toBeVisible();
