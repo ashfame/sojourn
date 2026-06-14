@@ -48,7 +48,8 @@ describe("rule engine", () => {
 
     expect(india?.windowLabel).toBe("FY 2026-27");
     expect(india?.usedDays).toBe(10);
-    expect(india?.remaining).toBe(50);
+    expect(india?.threshold).toBe(59);
+    expect(india?.remaining).toBe(49);
   });
 
   it("counts Schengen days in the rolling 180-day window", () => {

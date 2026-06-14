@@ -55,6 +55,16 @@ button.secondary:hover {
   background: #f7f4ee;
 }
 
+button.danger-button {
+  border-color: #d7b1aa;
+  background: #fff7f5;
+  color: #8b2525;
+}
+
+button.danger-button:hover {
+  background: #f5dede;
+}
+
 button.full-width {
   width: 100%;
 }
@@ -156,6 +166,11 @@ label {
   gap: 0.75rem;
 }
 
+.target-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .target-card,
 .panel {
   border: 1px solid #ded8cc;
@@ -173,7 +188,9 @@ label {
 .target-title-row,
 .target-meta,
 .evidence-heading,
-.storage-row {
+.storage-row,
+.panel-title-row,
+.rule-form-heading {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -265,7 +282,8 @@ label {
 
 .stay-form,
 .settings-form,
-.projection-grid {
+.projection-grid,
+.stay-edit-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.65rem;
@@ -407,6 +425,19 @@ label {
   font-weight: 800;
 }
 
+.stay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.stay-edit-form {
+  border: 1px solid #d5d0c7;
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 0.75rem;
+}
+
 .evidence-heading small {
   color: #8a6122;
   font-size: 0.74rem;
@@ -492,6 +523,63 @@ label {
   margin-bottom: 2rem;
 }
 
+.target-editor {
+  gap: 1rem;
+}
+
+.panel-title-row {
+  align-items: start;
+}
+
+.suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.suggestion-row button {
+  min-height: 2rem;
+  padding: 0.36rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.rule-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.rule-form {
+  border: 1px solid #ece7dc;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.rule-form.new-rule {
+  background: #fffaf0;
+}
+
+.rule-form-heading strong {
+  font-size: 0.9rem;
+}
+
+.rule-form-heading button {
+  min-height: 2rem;
+}
+
+.rule-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.rule-description-field {
+  grid-column: span 2;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -524,8 +612,29 @@ label {
   .stay-form,
   .settings-form,
   .projection-grid,
+  .stay-edit-form,
+  .rule-form-grid,
   .evidence-form {
     grid-template-columns: 1fr;
+  }
+
+  .panel-title-row,
+  .target-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .suggestion-row {
+    justify-content: stretch;
+  }
+
+  .suggestion-row button,
+  .target-actions button {
+    width: 100%;
+  }
+
+  .rule-description-field {
+    grid-column: auto;
   }
 
   .stay-summary {

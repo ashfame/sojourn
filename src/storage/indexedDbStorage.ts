@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import { createInitialData } from "../domain/seed";
+import { createInitialData, migrateAppData } from "../domain/seed";
 import type { AppData } from "../domain/types";
 import type { PersistedAppData, StorageDriver, StorageMetadata } from "./storageDriver";
 
@@ -44,7 +44,7 @@ export const createIndexedDbStorage = (): StorageDriver => ({
     const stored = await db.get("app", APP_KEY);
     if (stored) {
       return {
-        data: stored.data,
+        data: migrateAppData(stored.data),
         metadata: metadata(stored.savedAt, stored.revision)
       };
     }

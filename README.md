@@ -70,13 +70,16 @@ VITE_BASE_PATH=/sojourn/ npm run build:static
 
 - The main screen is a scrollable stay timeline.
 - Each stay expands inline to show evidence.
+- Explicit stays can be edited or deleted from the expanded stay panel.
 - Evidence completeness is summarized as `x/4` on every stay.
 - Target cards use one progress component with two meanings:
   - `minimum`: fill toward a target, safe when complete.
   - `ceiling`: spend down a budget, warning near the edge.
-- UAE uses a calendar-year minimum.
-- India uses an Apr-Mar fiscal-year ceiling.
-- Schengen uses a rolling 180-day window over a country set.
+- Targets are configurable. Each rule owns its countries, threshold, direction, counting convention, and window.
+- For ceiling rules, the threshold is the maximum safe day count. For example, "under 60" is configured as `59`.
+- UAE is suggested as a calendar-year minimum.
+- India is suggested as an Apr-Mar fiscal-year ceiling.
+- Schengen is suggested as a rolling 180-day window over a country set.
 - A projection panel runs hypothetical future stays through the same rule engine.
 
 ## BYOS And Remote Storage

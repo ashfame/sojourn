@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
-import { createInitialData } from "../../src/domain/seed";
+import { createInitialData, migrateAppData } from "../../src/domain/seed";
 import { createIndexedDbStorage } from "../../src/storage/indexedDbStorage";
 
 describe("indexedDbStorage", () => {
@@ -36,5 +36,25 @@ describe("indexedDbStorage", () => {
 
     expect(reloaded.data.stays.some((stay) => stay.id === "stay_test")).toBe(true);
     expect(reloaded.metadata.revision).toBeGreaterThan(1);
+  });
+
+  it("migrates the old India under-60 starter target to a 59-day ceiling", () => {
+    const data = createInitialData();
+    const oldData = {
+      ...data,
+      rules: data.rules.map((rule) =>
+        rule.id === "rule_india_nri"
+          ? {
+              ...rule,
+              threshold: 60,
+              description: "Stay under 60 days · conservative limit"
+            }
+          : rule
+      )
+    };
+
+    const migrated = migrateAppData(oldData);
+
+    expect(migrated.rules.find((rule) => rule.id === "rule_india_nri")?.threshold).toBe(59);
   });
 });

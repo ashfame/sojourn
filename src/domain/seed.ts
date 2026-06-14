@@ -56,11 +56,11 @@ export const defaultRules: Rule[] = [
     id: "rule_india_nri",
     label: "India NRI status",
     countryScope: ["IN"],
-    threshold: 60,
+    threshold: 59,
     direction: "ceiling",
     window: { type: "fiscal_year", startMonth: 4, startDay: 1 },
     counting: "entry_exit_count",
-    description: "Stay under 60 days · conservative limit"
+    description: "Maximum 59 days · FY Apr-Mar"
   },
   {
     id: "rule_schengen_90_180",
@@ -102,3 +102,22 @@ export const createInitialData = (): AppData => ({
   rules: defaultRules,
   updatedAt: createdAt
 });
+
+export const migrateAppData = (data: AppData): AppData => {
+  let changed = false;
+  const rules = data.rules.map((rule) => {
+    if (rule.id === "rule_india_nri" && rule.threshold === 60) {
+      changed = true;
+      return {
+        ...rule,
+        threshold: 59,
+        description:
+          rule.description === "Stay under 60 days · conservative limit"
+            ? "Maximum 59 days · FY Apr-Mar"
+            : rule.description
+      };
+    }
+    return rule;
+  });
+  return changed ? { ...data, rules } : data;
+};

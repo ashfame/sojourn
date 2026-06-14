@@ -6,20 +6,23 @@ import {
   ChevronUp,
   CircleAlert,
   Download,
+  Edit3,
   FileText,
   IdCard,
   Plane,
   Plus,
+  Save,
   Settings,
   Stamp,
   Target,
+  Trash2,
   Ticket,
   Upload,
   X
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { countryInitials, countryName } from "../domain/countries";
-import { formatDateRange, todayString } from "../domain/dates";
+import { formatDateRange, isBefore, todayString } from "../domain/dates";
 import { evidenceLabel } from "../domain/evidence";
 import { createId } from "../domain/seed";
 import {
@@ -33,12 +36,16 @@ import {
 } from "../domain/rules";
 import type {
   AppData,
+  CountingConvention,
   EvidenceItem,
   EvidenceType,
   ProjectionInput,
+  Rule,
+  RuleDirection,
   RuleProgress,
   Stay,
-  TimelineStay
+  TimelineStay,
+  WindowDefinition
 } from "../domain/types";
 import { createIndexedDbStorage } from "../storage/indexedDbStorage";
 import type { StorageDriver, StorageMetadata } from "../storage/storageDriver";
@@ -64,6 +71,50 @@ const defaultProjection: ProjectionInput = {
   label: "Aug-Nov sabbatical"
 };
 
+const indiaFiscalWindow: WindowDefinition = { type: "fiscal_year", startMonth: 4, startDay: 1 };
+
+const ruleSuggestions: Array<{
+  label: string;
+  build: () => Omit<Rule, "id">;
+}> = [
+  {
+    label: "India: under 60",
+    build: () => ({
+      label: "India under 60",
+      countryScope: ["IN"],
+      threshold: 59,
+      direction: "ceiling",
+      window: indiaFiscalWindow,
+      counting: "entry_exit_count",
+      description: "Maximum 59 days · FY Apr-Mar"
+    })
+  },
+  {
+    label: "India: under 120",
+    build: () => ({
+      label: "India under 120",
+      countryScope: ["IN"],
+      threshold: 119,
+      direction: "ceiling",
+      window: indiaFiscalWindow,
+      counting: "entry_exit_count",
+      description: "Maximum 119 days · FY Apr-Mar"
+    })
+  },
+  {
+    label: "India: under 183",
+    build: () => ({
+      label: "India under 183",
+      countryScope: ["IN"],
+      threshold: 182,
+      direction: "ceiling",
+      window: indiaFiscalWindow,
+      counting: "entry_exit_count",
+      description: "Maximum 182 days · FY Apr-Mar"
+    })
+  }
+];
+
 const formatSavedAt = (value?: string): string => {
   if (!value) {
     return "Not saved yet";
@@ -85,11 +136,49 @@ const downloadBlob = (blob: Blob, filename: string): void => {
   URL.revokeObjectURL(url);
 };
 
+const optionalString = (value: FormDataEntryValue | null): string | undefined => {
+  const normalized = String(value ?? "").trim();
+  return normalized ? normalized : undefined;
+};
+
+const normalizeCountryScope = (value: FormDataEntryValue | null): string[] => {
+  const countries = String(value ?? "")
+    .split(/[,\s]+/)
+    .map((country) => country.trim().toUpperCase())
+    .filter(Boolean);
+  return [...new Set(countries)].slice(0, 32);
+};
+
+const numberFromForm = (formData: FormData, key: string, fallback: number): number => {
+  const value = Number(formData.get(key));
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+
+const windowFromForm = (formData: FormData): WindowDefinition => {
+  const type = String(formData.get("windowType"));
+  if (type === "fiscal_year") {
+    return {
+      type: "fiscal_year",
+      startMonth: numberFromForm(formData, "startMonth", 1),
+      startDay: numberFromForm(formData, "startDay", 1)
+    };
+  }
+  if (type === "rolling_days") {
+    return {
+      type: "rolling_days",
+      days: numberFromForm(formData, "rollingDays", 180)
+    };
+  }
+  return { type: "calendar_year" };
+};
+
 export function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [metadata, setMetadata] = useState<StorageMetadata>({ backend: "indexeddb" });
   const [expandedStayIds, setExpandedStayIds] = useState<Set<string>>(new Set(["stay_spain_2026"]));
   const [showStayForm, setShowStayForm] = useState(false);
+  const [showTargetEditor, setShowTargetEditor] = useState(false);
+  const [editingStayId, setEditingStayId] = useState<string | null>(null);
   const [proofStayId, setProofStayId] = useState<string | null>(null);
   const [projection, setProjection] = useState<ProjectionInput>(defaultProjection);
   const [message, setMessage] = useState<string>("");
@@ -155,13 +244,20 @@ export function App() {
       return;
     }
     const formData = new FormData(form);
+    const entryDate = String(formData.get("entryDate"));
+    const exitDate = optionalString(formData.get("exitDate"));
+    const label = optionalString(formData.get("label"));
+    if (exitDate && isBefore(exitDate, entryDate)) {
+      setMessage("Exit date cannot be before entry date.");
+      return;
+    }
     const now = new Date().toISOString();
     const stay: Stay = {
       id: createId("stay"),
       country: String(formData.get("country") ?? "AE").toUpperCase(),
-      entryDate: String(formData.get("entryDate")),
-      exitDate: String(formData.get("exitDate") || "") || undefined,
-      label: String(formData.get("label") || "") || undefined,
+      entryDate,
+      ...(exitDate ? { exitDate } : {}),
+      ...(label ? { label } : {}),
       createdAt: now,
       updatedAt: now
     };
@@ -170,21 +266,81 @@ export function App() {
     setShowStayForm(false);
   };
 
+  const updateStay = (form: HTMLFormElement, stayId: string): void => {
+    if (!data) {
+      return;
+    }
+    const formData = new FormData(form);
+    const entryDate = String(formData.get("entryDate"));
+    const exitDate = optionalString(formData.get("exitDate"));
+    if (exitDate && isBefore(exitDate, entryDate)) {
+      setMessage("Exit date cannot be before entry date.");
+      return;
+    }
+    const label = optionalString(formData.get("label"));
+    const now = new Date().toISOString();
+    const stays = data.stays.map((stay) => {
+      if (stay.id !== stayId) {
+        return stay;
+      }
+      return {
+        id: stay.id,
+        country: String(formData.get("country") ?? stay.country).toUpperCase(),
+        entryDate,
+        ...(exitDate ? { exitDate } : {}),
+        ...(label ? { label } : {}),
+        createdAt: stay.createdAt,
+        updatedAt: now
+      };
+    });
+    void saveData({ ...data, stays }, "Stay updated.");
+    setEditingStayId(null);
+    setExpandedStayIds((current) => new Set(current).add(stayId));
+  };
+
+  const deleteStay = (stay: TimelineStay): void => {
+    if (!data || stay.source !== "explicit") {
+      return;
+    }
+    if (
+      stay.evidence.length > 0 &&
+      !window.confirm("Delete this stay and its linked evidence?")
+    ) {
+      return;
+    }
+    void saveData(
+      {
+        ...data,
+        stays: data.stays.filter((item) => item.id !== stay.id),
+        evidence: data.evidence.filter((item) => item.stayId !== stay.id)
+      },
+      "Stay deleted."
+    );
+    setExpandedStayIds((current) => {
+      const next = new Set(current);
+      next.delete(stay.id);
+      return next;
+    });
+    setEditingStayId(null);
+    setProofStayId(null);
+  };
+
   const addEvidence = (form: HTMLFormElement, stayId: string): void => {
     if (!data) {
       return;
     }
     const formData = new FormData(form);
     const file = formData.get("file");
+    const evidenceDate = optionalString(formData.get("date"));
     const evidence: EvidenceItem = {
       id: createId("evidence"),
       stayId,
       type: String(formData.get("type")) as EvidenceType,
       title: String(formData.get("title") || (file instanceof File ? file.name : "Evidence")),
-      date: String(formData.get("date") || "") || undefined,
-      fileName: file instanceof File && file.name ? file.name : undefined,
-      mimeType: file instanceof File && file.type ? file.type : undefined,
-      sizeBytes: file instanceof File ? file.size : undefined,
+      ...(evidenceDate ? { date: evidenceDate } : {}),
+      ...(file instanceof File && file.name ? { fileName: file.name } : {}),
+      ...(file instanceof File && file.type ? { mimeType: file.type } : {}),
+      ...(file instanceof File ? { sizeBytes: file.size } : {}),
       createdAt: new Date().toISOString()
     };
     void saveData({ ...data, evidence: [...data.evidence, evidence] }, "Evidence added.");
@@ -210,6 +366,59 @@ export function App() {
       },
       "Settings saved."
     );
+  };
+
+  const upsertRule = (form: HTMLFormElement, ruleId?: string): void => {
+    if (!data) {
+      return;
+    }
+    const formData = new FormData(form);
+    const countries = normalizeCountryScope(formData.get("countryScope"));
+    if (countries.length === 0) {
+      setMessage("Add at least one country code for the target.");
+      return;
+    }
+    const nextRule: Rule = {
+      id: ruleId ?? createId("rule"),
+      label: String(formData.get("label") || "Custom target").trim(),
+      countryScope: countries,
+      threshold: numberFromForm(formData, "threshold", 1),
+      direction: String(formData.get("direction")) as RuleDirection,
+      window: windowFromForm(formData),
+      counting: String(formData.get("counting")) as CountingConvention,
+      description: String(formData.get("description") || "").trim()
+    };
+    const rules = ruleId
+      ? data.rules.map((rule) => (rule.id === ruleId ? nextRule : rule))
+      : [...data.rules, nextRule];
+    void saveData({ ...data, rules }, ruleId ? "Target updated." : "Target added.");
+    form.reset();
+  };
+
+  const deleteRule = (ruleId: string): void => {
+    if (!data) {
+      return;
+    }
+    if (data.rules.length <= 1) {
+      setMessage("Keep at least one target.");
+      return;
+    }
+    void saveData(
+      { ...data, rules: data.rules.filter((rule) => rule.id !== ruleId) },
+      "Target deleted."
+    );
+  };
+
+  const addSuggestedRule = (suggestion: (typeof ruleSuggestions)[number]): void => {
+    if (!data) {
+      return;
+    }
+    const rule: Rule = {
+      id: createId("rule"),
+      ...suggestion.build()
+    };
+    void saveData({ ...data, rules: [...data.rules, rule] }, "Suggested target added.");
+    setShowTargetEditor(true);
   };
 
   if (!data) {
@@ -247,6 +456,25 @@ export function App() {
           <TargetCard key={item.rule.id} progress={item} />
         ))}
       </section>
+
+      <div className="target-actions">
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setShowTargetEditor((value) => !value)}
+        >
+          <Settings size={16} /> {showTargetEditor ? "Hide target settings" : "Configure targets"}
+        </button>
+      </div>
+
+      {showTargetEditor && (
+        <TargetEditor
+          rules={data.rules}
+          onSaveRule={upsertRule}
+          onDeleteRule={deleteRule}
+          onAddSuggestion={addSuggestedRule}
+        />
+      )}
 
       {showStayForm && (
         <section className="panel">
@@ -298,6 +526,14 @@ export function App() {
             expanded={expandedStayIds.has(stay.id)}
             onToggle={() => toggleStay(stay.id)}
             addingProof={proofStayId === stay.id}
+            editing={editingStayId === stay.id}
+            onStartEdit={() => {
+              setEditingStayId(stay.id);
+              setProofStayId(null);
+            }}
+            onCancelEdit={() => setEditingStayId(null)}
+            onSaveEdit={(form) => updateStay(form, stay.id)}
+            onDelete={() => deleteStay(stay)}
             onAddProof={() => setProofStayId(stay.id)}
             onCancelProof={() => setProofStayId(null)}
             onSaveProof={(form) => addEvidence(form, stay.id)}
@@ -409,6 +645,11 @@ function StayRow({
   expanded,
   onToggle,
   addingProof,
+  editing,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
   onAddProof,
   onCancelProof,
   onSaveProof
@@ -417,6 +658,11 @@ function StayRow({
   expanded: boolean;
   onToggle: () => void;
   addingProof: boolean;
+  editing: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (form: HTMLFormElement) => void;
+  onDelete: () => void;
   onAddProof: () => void;
   onCancelProof: () => void;
   onSaveProof: (form: HTMLFormElement) => void;
@@ -442,6 +688,21 @@ function StayRow({
 
       {expanded && (
         <div className="evidence-box">
+          {!isHomeBase && (
+            <div className="stay-actions">
+              <button type="button" className="secondary" onClick={onStartEdit}>
+                <Edit3 size={15} /> Edit stay
+              </button>
+              <button type="button" className="danger-button" onClick={onDelete}>
+                <Trash2 size={15} /> Delete
+              </button>
+            </div>
+          )}
+
+          {editing && !isHomeBase && (
+            <StayEditForm stay={stay} onCancel={onCancelEdit} onSave={onSaveEdit} />
+          )}
+
           <div className="evidence-heading">
             <span>
               Evidence · {stay.evidence.length} item{stay.evidence.length === 1 ? "" : "s"}
@@ -469,6 +730,205 @@ function StayRow({
         </div>
       )}
     </article>
+  );
+}
+
+function StayEditForm({
+  stay,
+  onCancel,
+  onSave
+}: {
+  stay: Stay;
+  onCancel: () => void;
+  onSave: (form: HTMLFormElement) => void;
+}) {
+  return (
+    <form
+      className="stay-edit-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave(event.currentTarget);
+      }}
+    >
+      <label>
+        Country
+        <select name="country" defaultValue={stay.country}>
+          {countryOptions.map((code) => (
+            <option key={code} value={code}>
+              {countryName(code)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Entry
+        <input name="entryDate" type="date" defaultValue={stay.entryDate} required />
+      </label>
+      <label>
+        Exit
+        <input name="exitDate" type="date" defaultValue={stay.exitDate ?? ""} />
+      </label>
+      <label>
+        Label
+        <input name="label" defaultValue={stay.label ?? ""} placeholder="City, trip, or reason" />
+      </label>
+      <div className="button-row">
+        <button type="submit">
+          <Save size={15} /> Save stay
+        </button>
+        <button type="button" className="secondary" onClick={onCancel}>
+          <X size={15} /> Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function TargetEditor({
+  rules,
+  onSaveRule,
+  onDeleteRule,
+  onAddSuggestion
+}: {
+  rules: Rule[];
+  onSaveRule: (form: HTMLFormElement, ruleId?: string) => void;
+  onDeleteRule: (ruleId: string) => void;
+  onAddSuggestion: (suggestion: (typeof ruleSuggestions)[number]) => void;
+}) {
+  return (
+    <section className="panel target-editor">
+      <div className="panel-title-row">
+        <h2>
+          <Target size={18} /> Target settings
+        </h2>
+        <div className="suggestion-row" aria-label="Suggested targets">
+          {ruleSuggestions.map((suggestion) => (
+            <button
+              key={suggestion.label}
+              type="button"
+              className="secondary"
+              onClick={() => onAddSuggestion(suggestion)}
+            >
+              <Plus size={14} /> {suggestion.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="rule-list">
+        {rules.map((rule) => (
+          <RuleForm
+            key={rule.id}
+            rule={rule}
+            onSave={(form) => onSaveRule(form, rule.id)}
+            onDelete={() => onDeleteRule(rule.id)}
+          />
+        ))}
+      </div>
+      <RuleForm onSave={(form) => onSaveRule(form)} />
+    </section>
+  );
+}
+
+function RuleForm({
+  rule,
+  onSave,
+  onDelete
+}: {
+  rule?: Rule;
+  onSave: (form: HTMLFormElement) => void;
+  onDelete?: () => void;
+}) {
+  const windowType = rule?.window.type ?? "calendar_year";
+  const startMonth = rule?.window.type === "fiscal_year" ? rule.window.startMonth : 1;
+  const startDay = rule?.window.type === "fiscal_year" ? rule.window.startDay : 1;
+  const rollingDays = rule?.window.type === "rolling_days" ? rule.window.days : 180;
+  return (
+    <form
+      className={`rule-form ${rule ? "" : "new-rule"}`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave(event.currentTarget);
+      }}
+    >
+      <div className="rule-form-heading">
+        <strong>{rule ? rule.label : "Add custom target"}</strong>
+        {rule && onDelete && (
+          <button type="button" className="danger-button" onClick={onDelete}>
+            <Trash2 size={14} /> Delete
+          </button>
+        )}
+      </div>
+      <div className="rule-form-grid">
+        <label>
+          Label
+          <input name="label" defaultValue={rule?.label ?? ""} placeholder="India under 60" />
+        </label>
+        <label>
+          Countries
+          <input
+            name="countryScope"
+            defaultValue={rule?.countryScope.join(", ") ?? "IN"}
+            placeholder="IN or FR, DE, ES"
+            required
+          />
+        </label>
+        <label>
+          Direction
+          <select name="direction" defaultValue={rule?.direction ?? "ceiling"}>
+            <option value="ceiling">Ceiling / budget</option>
+            <option value="minimum">Minimum / target</option>
+          </select>
+        </label>
+        <label>
+          Max or target days
+          <input
+            name="threshold"
+            type="number"
+            min="1"
+            defaultValue={rule?.threshold ?? 59}
+            required
+          />
+        </label>
+        <label>
+          Year/window
+          <select name="windowType" defaultValue={windowType}>
+            <option value="calendar_year">Calendar year</option>
+            <option value="fiscal_year">Fiscal/tax year</option>
+            <option value="rolling_days">Rolling days</option>
+          </select>
+        </label>
+        <label>
+          Fiscal start month
+          <input name="startMonth" type="number" min="1" max="12" defaultValue={startMonth} />
+        </label>
+        <label>
+          Fiscal start day
+          <input name="startDay" type="number" min="1" max="31" defaultValue={startDay} />
+        </label>
+        <label>
+          Rolling window days
+          <input name="rollingDays" type="number" min="1" defaultValue={rollingDays} />
+        </label>
+        <label>
+          Counting
+          <select name="counting" defaultValue={rule?.counting ?? "entry_exit_count"}>
+            <option value="entry_exit_count">Entry and exit count</option>
+            <option value="presence_any_part">Presence any part of day</option>
+          </select>
+        </label>
+        <label className="rule-description-field">
+          Description
+          <input
+            name="description"
+            defaultValue={rule?.description ?? ""}
+            placeholder="Maximum 59 days · FY Apr-Mar"
+          />
+        </label>
+      </div>
+      <button type="submit">
+        <Save size={15} /> {rule ? "Save target" : "Add target"}
+      </button>
+    </form>
   );
 }
 

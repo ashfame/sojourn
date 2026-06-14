@@ -111,10 +111,11 @@ Country scope can contain multiple countries, which is how Schengen works withou
 ## Built-In Rules
 
 - UAE tax residency: `183` day minimum, calendar year, UAE country scope.
-- India NRI status: `60` day conservative ceiling, Apr-Mar fiscal year, India country scope.
+- India NRI status: `59` day conservative ceiling for "under 60", Apr-Mar fiscal year, India country scope.
 - Schengen 90/180: `90` day ceiling, rolling 180-day window, Schengen country set.
 
 Entry/exit counting belongs to the rule, not to the stay.
+Every target is user-editable, and multiple targets can share the same country scope.
 
 ## Storage Architecture
 
@@ -198,8 +199,10 @@ The first rebuild should deliver:
 - Timeline-first React UI.
 - Target cards with minimum/ceiling semantics.
 - Stay creation.
+- Stay editing and deletion.
 - Expandable evidence panels.
 - Evidence metadata creation.
+- Target editor for custom countries, thresholds, directions, and tax-year windows.
 - Projection panel.
 - Settings for home base, nationality, legal residence, and entry/exit policy.
 - IndexedDB-backed `StorageDriver`.
@@ -210,8 +213,7 @@ The first rebuild should deliver:
 
 1. Store imported evidence blobs in browser storage.
 2. Add document preview for PDFs/images.
-3. Add rule editor for custom countries and thresholds.
-4. Add import/restore from exported JSON.
-5. Add browser SQLite/WASM storage experiment behind `StorageDriver`.
-6. Add remote backup/sync behind `RemoteSyncDriver`.
-7. Add exportable tax residency package with summary and referenced proof.
+3. Add import/restore from exported JSON.
+4. Add browser SQLite/WASM storage experiment behind `StorageDriver`.
+5. Add remote backup/sync behind `RemoteSyncDriver`.
+6. Add exportable tax residency package with summary and referenced proof.
