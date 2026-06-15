@@ -50,7 +50,7 @@ export const createTimeline = (
     countExitDate: string,
     durationEntryDate = countEntryDate,
     durationExitDate = countExitDate,
-    knownExitDate = stay.exitDate
+    knownExitDate?: string
   ): void => {
     const evidence = evidenceByStay.get(stay.id) ?? [];
     timeline.push({
@@ -61,7 +61,7 @@ export const createTimeline = (
       ...(knownExitDate ? { knownExitDate } : {}),
       durationDays: daysInclusive(durationEntryDate, durationExitDate),
       evidence,
-      evidenceStatus: scoreEvidence(evidence, { ongoing: !stay.exitDate })
+      evidenceStatus: scoreEvidence(evidence, { ongoing: knownExitDate === undefined })
     });
   };
 

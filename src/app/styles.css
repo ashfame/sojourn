@@ -426,6 +426,17 @@ label {
   font-weight: 500;
 }
 
+.active-chip {
+  margin-left: 0.38rem;
+  border: 1px solid #b8dccf;
+  border-radius: 999px;
+  background: #e0f5ed;
+  color: #075340;
+  padding: 0.06rem 0.36rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
 .evidence-chip {
   min-width: 2.45rem;
   border-radius: 999px;

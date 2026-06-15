@@ -22,7 +22,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ChangeEvent, type ComponentType } from "react";
 import { COUNTRY_NAMES, countryFlag, countryName } from "../domain/countries";
-import { formatDateRange, isBefore, todayString } from "../domain/dates";
+import {
+  formatDateRange,
+  isBefore,
+  millisecondsUntilNextUtcDay,
+  todayString
+} from "../domain/dates";
 import { evidenceLabel } from "../domain/evidence";
 import { createId } from "../domain/seed";
 import {
@@ -245,6 +250,7 @@ export function App() {
   const [editingEvidenceId, setEditingEvidenceId] = useState<string | null>(null);
   const [proofStayId, setProofStayId] = useState<string | null>(null);
   const [projection, setProjection] = useState<ProjectionInput>(defaultProjection);
+  const [asOf, setAsOf] = useState(() => todayString());
   const [message, setMessage] = useState<string>("");
 
   useEffect(() => {
@@ -266,7 +272,38 @@ export function App() {
     };
   }, []);
 
-  const asOf = todayString();
+  useEffect(() => {
+    let timeoutId: number | undefined;
+    const refreshAsOf = (): void => {
+      setAsOf((current) => {
+        const next = todayString();
+        return next === current ? current : next;
+      });
+    };
+    const scheduleNextRefresh = (): void => {
+      timeoutId = window.setTimeout(() => {
+        refreshAsOf();
+        scheduleNextRefresh();
+      }, millisecondsUntilNextUtcDay());
+    };
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState !== "hidden") {
+        refreshAsOf();
+      }
+    };
+
+    scheduleNextRefresh();
+    window.addEventListener("focus", refreshAsOf);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+      window.removeEventListener("focus", refreshAsOf);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
+
   const timeline = useMemo(() => (data ? createTimeline(data, asOf) : []), [asOf, data]);
   const progress = useMemo(() => (data ? computeRuleProgress(data, asOf) : []), [asOf, data]);
   const projectedStay = useMemo(() => {
@@ -394,6 +431,23 @@ export function App() {
     });
     setEditingStayId(null);
     setProofStayId(null);
+  };
+
+  const endStayToday = (stay: TimelineStay): void => {
+    if (!data || stay.source !== "explicit" || stay.knownExitDate !== undefined) {
+      return;
+    }
+    const now = new Date().toISOString();
+    void saveData(
+      {
+        ...data,
+        stays: data.stays.map((item) =>
+          item.id === stay.id ? { ...item, exitDate: asOf, updatedAt: now } : item
+        )
+      },
+      "Active stay ended today."
+    );
+    setExpandedStayIds((current) => new Set(current).add(stay.id));
   };
 
   const addEvidence = (form: HTMLFormElement, stayId: string): void => {
@@ -637,6 +691,9 @@ export function App() {
             <label>
               Exit
               <input name="exitDate" type="date" />
+              <span className="field-help">
+                Leave blank for your current stay. It counts through today and updates daily.
+              </span>
             </label>
             <label>
               Label
@@ -673,6 +730,7 @@ export function App() {
             onCancelEdit={() => setEditingStayId(null)}
             onSaveEdit={(form) => updateStay(form, stay.id)}
             onDelete={() => deleteStay(stay)}
+            onEndToday={() => endStayToday(stay)}
             onAddProof={() => {
               setProofStayId(stay.id);
               setEditingEvidenceId(null);
@@ -841,6 +899,7 @@ function StayRow({
   onCancelEdit,
   onSaveEdit,
   onDelete,
+  onEndToday,
   onAddProof,
   onCancelProof,
   onSaveProof,
@@ -859,6 +918,7 @@ function StayRow({
   onCancelEdit: () => void;
   onSaveEdit: (form: HTMLFormElement) => void;
   onDelete: () => void;
+  onEndToday: () => void;
   onAddProof: () => void;
   onCancelProof: () => void;
   onSaveProof: (form: HTMLFormElement) => void;
@@ -868,6 +928,7 @@ function StayRow({
   onDeleteEvidence: (item: EvidenceItem) => void;
 }) {
   const isUnaccounted = stay.source === "unaccounted";
+  const isActive = stay.source === "explicit" && stay.knownExitDate === undefined;
   return (
     <article className={`stay-row ${isUnaccounted ? "unaccounted" : ""}`}>
       <span className="timeline-dot" aria-hidden="true" />
@@ -878,7 +939,9 @@ function StayRow({
         <span className="stay-copy">
           <strong>{formatStayTitle(stay)}</strong>
           <small>
-            {formatDateRange(stay.entryDate, stay.exitDate)} · {stay.label ?? "stay"}
+            {formatDateRange(stay.entryDate, isActive ? undefined : stay.exitDate)} ·{" "}
+            {stay.label ?? "stay"}
+            {isActive && <span className="active-chip">Active</span>}
           </small>
         </span>
         {!isUnaccounted && (
@@ -904,6 +967,11 @@ function StayRow({
             <button type="button" className="danger-button" onClick={onDelete}>
               <Trash2 size={15} /> Delete
             </button>
+            {isActive && (
+              <button type="button" className="secondary" onClick={onEndToday}>
+                <CalendarDays size={15} /> End today
+              </button>
+            )}
           </div>
 
           {editing && <StayEditForm stay={stay} onCancel={onCancelEdit} onSave={onSaveEdit} />}
@@ -957,7 +1025,7 @@ function StayEditForm({
   onCancel,
   onSave
 }: {
-  stay: Stay;
+  stay: TimelineStay;
   onCancel: () => void;
   onSave: (form: HTMLFormElement) => void;
 }) {
@@ -979,7 +1047,10 @@ function StayEditForm({
       </label>
       <label>
         Exit
-        <input name="exitDate" type="date" defaultValue={stay.exitDate ?? ""} />
+        <input name="exitDate" type="date" defaultValue={stay.knownExitDate ?? ""} />
+        <span className="field-help">
+          Leave blank for your current stay. It counts through today and updates daily.
+        </span>
       </label>
       <label>
         Label

@@ -39,6 +39,8 @@ The main screen is the timeline.
 
 - Stays are sorted newest first.
 - Missing dates between explicit stays are shown as unaccounted timeline rows.
+- Open-ended stays are active stays. They count through the current `asOf` date and the browser
+  refreshes that date while the app is open.
 - Each stay expands inline to show proof.
 - Each stay shows evidence completeness, such as `2/4`.
 - Target cards stay visible near the top so the user can see day-count pressure before browsing details.

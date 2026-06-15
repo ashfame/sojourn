@@ -100,6 +100,36 @@ describe("rule engine", () => {
     expect(uae?.rule.direction).toBe("minimum");
   });
 
+  it("extends an active stay through the current as-of date", () => {
+    const data = {
+      ...createInitialData(),
+      rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] })),
+      stays: [
+        {
+          id: "stay_uae_active",
+          country: "AE",
+          entryDate: "2026-06-10",
+          label: "Current stay",
+          createdAt: "2026-06-10T00:00:00.000Z",
+          updatedAt: "2026-06-10T00:00:00.000Z"
+        }
+      ]
+    };
+
+    const firstDay = progressByRule(data, "2026-06-10").get("rule_uae_183");
+    const secondDay = progressByRule(data, "2026-06-11").get("rule_uae_183");
+    const timeline = createTimeline(data, "2026-06-11");
+
+    expect(firstDay?.usedDays).toBe(1);
+    expect(secondDay?.usedDays).toBe(2);
+    expect(timeline[0]).toMatchObject({
+      id: "stay_uae_active",
+      exitDate: "2026-06-11",
+      durationDays: 2
+    });
+    expect(timeline[0]?.knownExitDate).toBeUndefined();
+  });
+
   it("counts India ceiling days in an Apr-Mar fiscal year", () => {
     const data = sampleData();
     data.stays.push({

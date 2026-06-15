@@ -19,6 +19,18 @@ export const toDateString = (date: Date): string => date.toISOString().slice(0, 
 
 export const todayString = (): string => toDateString(new Date());
 
+export const millisecondsUntilNextUtcDay = (date = new Date()): number => {
+  const nextDay = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() + 1,
+    0,
+    0,
+    1
+  );
+  return Math.max(1000, nextDay - date.getTime());
+};
+
 export const addDays = (value: string, days: number): string =>
   toDateString(new Date(toUtcDate(value).getTime() + days * MS_PER_DAY));
 

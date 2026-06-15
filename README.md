@@ -73,6 +73,8 @@ VITE_BASE_PATH=/sojourn/ npm run build:static
 - The main screen is a scrollable stay timeline.
 - First run has no demo stays, evidence, or targets.
 - When no targets exist, the app opens the target setup panel and offers suggested templates.
+- A stay with no exit date is treated as active and counts through today; the app refreshes the
+  active day count when the date changes.
 - Each stay expands inline to show evidence.
 - Explicit stays can be edited or deleted from the expanded stay panel.
 - Evidence can be added, edited, or deleted from the expanded stay panel.
