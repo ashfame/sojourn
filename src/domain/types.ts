@@ -33,7 +33,7 @@ export interface Stay {
 }
 
 export interface TimelineStay extends Stay {
-  source: "explicit" | "inferred_home_base";
+  source: "explicit" | "unaccounted";
   countEntryDate: string;
   countExitDate: string;
   knownExitDate?: string | undefined;

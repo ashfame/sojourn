@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   CircleAlert,
+  Database,
   Download,
   Edit3,
   FileText,
@@ -12,7 +13,6 @@ import {
   Plane,
   Plus,
   Save,
-  Settings,
   Stamp,
   Target,
   Trash2,
@@ -20,8 +20,8 @@ import {
   Upload,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { countryFlag, countryName } from "../domain/countries";
+import { useEffect, useMemo, useState, type ChangeEvent, type ComponentType } from "react";
+import { COUNTRY_NAMES, countryFlag, countryName } from "../domain/countries";
 import { formatDateRange, isBefore, todayString } from "../domain/dates";
 import { evidenceLabel } from "../domain/evidence";
 import { createId } from "../domain/seed";
@@ -62,13 +62,15 @@ const evidenceIcons: Record<EvidenceType, ComponentType<{ size?: number }>> = {
   other: FileText
 };
 
-const countryOptions = ["AE", "IN", "NP", "ES", "PL", "FR", "DE", "IT", "NL", "PT"];
+const countryOptions = Object.keys(COUNTRY_NAMES).sort((left, right) =>
+  countryName(left).localeCompare(countryName(right))
+);
 
 const defaultProjection: ProjectionInput = {
-  country: "NP",
-  entryDate: "2026-08-01",
-  exitDate: "2026-11-15",
-  label: "Aug-Nov sabbatical"
+  country: "",
+  entryDate: "",
+  exitDate: "",
+  label: ""
 };
 
 const indiaFiscalWindow: WindowDefinition = { type: "fiscal_year", startMonth: 4, startDay: 1 };
@@ -77,6 +79,18 @@ const ruleSuggestions: Array<{
   label: string;
   build: () => Omit<Rule, "id">;
 }> = [
+  {
+    label: "UAE: 183 minimum",
+    build: () => ({
+      label: "UAE tax residency",
+      countryScope: ["AE"],
+      threshold: 183,
+      direction: "minimum",
+      window: { type: "calendar_year" },
+      counting: "presence_any_part",
+      description: "183 days in calendar year"
+    })
+  },
   {
     label: "India: under 60",
     build: () => ({
@@ -111,6 +125,18 @@ const ruleSuggestions: Array<{
       window: indiaFiscalWindow,
       counting: "entry_exit_count",
       description: "Maximum 182 days · FY Apr-Mar"
+    })
+  },
+  {
+    label: "Schengen: 90/180",
+    build: () => ({
+      label: "Schengen 90/180",
+      countryScope: ["AT", "BE", "CH", "CZ", "DE", "ES", "FR", "GR", "IT", "NL", "PL", "PT"],
+      threshold: 90,
+      direction: "ceiling",
+      window: { type: "rolling_days", days: 180 },
+      counting: "entry_exit_count",
+      description: "Rolling 180-day window · all Schengen states"
     })
   }
 ];
@@ -148,6 +174,13 @@ const normalizeCountryScope = (value: FormDataEntryValue | null): string[] => {
     .filter(Boolean);
   return [...new Set(countries)].slice(0, 32);
 };
+
+const normalizeCountryCode = (value: string): string =>
+  value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "")
+    .slice(0, 2);
 
 const numberFromForm = (formData: FormData, key: string, fallback: number): number => {
   const value = Number(formData.get(key));
@@ -204,9 +237,10 @@ const countingDescriptions: Record<CountingConvention, string> = {
 export function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [metadata, setMetadata] = useState<StorageMetadata>({ backend: "indexeddb" });
-  const [expandedStayIds, setExpandedStayIds] = useState<Set<string>>(new Set(["stay_spain_2026"]));
+  const [expandedStayIds, setExpandedStayIds] = useState<Set<string>>(new Set());
   const [showStayForm, setShowStayForm] = useState(false);
   const [showTargetEditor, setShowTargetEditor] = useState(false);
+  const [showDataPanel, setShowDataPanel] = useState(false);
   const [editingStayId, setEditingStayId] = useState<string | null>(null);
   const [editingEvidenceId, setEditingEvidenceId] = useState<string | null>(null);
   const [proofStayId, setProofStayId] = useState<string | null>(null);
@@ -237,6 +271,12 @@ export function App() {
   const progress = useMemo(() => (data ? computeRuleProgress(data, asOf) : []), [asOf, data]);
   const projectedStay = useMemo(() => {
     try {
+      if (!projection.country || !projection.entryDate || !projection.exitDate) {
+        return undefined;
+      }
+      if (isBefore(projection.exitDate, projection.entryDate)) {
+        return undefined;
+      }
       return projectionStay(projection);
     } catch {
       return undefined;
@@ -248,6 +288,7 @@ export function App() {
     }
     return computeRuleProgress(data, ruleAsOfDate([projectedStay], asOf), [projectedStay]);
   }, [asOf, data, projectedStay]);
+  const targetEditorOpen = data ? data.rules.length === 0 || showTargetEditor : showTargetEditor;
 
   const saveData = async (next: AppData, savedMessage: string): Promise<void> => {
     const stamped = { ...next, updatedAt: new Date().toISOString() };
@@ -284,7 +325,7 @@ export function App() {
     const now = new Date().toISOString();
     const stay: Stay = {
       id: createId("stay"),
-      country: String(formData.get("country") ?? "AE").toUpperCase(),
+      country: normalizeCountryCode(String(formData.get("country") ?? "AE")),
       entryDate,
       ...(exitDate ? { exitDate } : {}),
       ...(label ? { label } : {}),
@@ -315,7 +356,7 @@ export function App() {
       }
       return {
         id: stay.id,
-        country: String(formData.get("country") ?? stay.country).toUpperCase(),
+        country: normalizeCountryCode(String(formData.get("country") ?? stay.country)),
         entryDate,
         ...(exitDate ? { exitDate } : {}),
         ...(label ? { label } : {}),
@@ -427,7 +468,7 @@ export function App() {
     };
   };
 
-  const updateSettings = (form: HTMLFormElement): void => {
+  const updateProfile = (form: HTMLFormElement): void => {
     if (!data) {
       return;
     }
@@ -436,13 +477,13 @@ export function App() {
       {
         ...data,
         settings: {
-          homeBaseCountry: String(formData.get("homeBaseCountry") ?? "AE").toUpperCase(),
+          homeBaseCountry: data.settings.homeBaseCountry,
           nationality: String(formData.get("nationality") ?? "IN").toUpperCase(),
           legalResidence: String(formData.get("legalResidence") ?? "AE").toUpperCase(),
           countEntryExitDays: data.settings.countEntryExitDays
         }
       },
-      "Settings saved."
+      "Profile saved."
     );
   };
 
@@ -474,6 +515,7 @@ export function App() {
       ? data.rules.map((rule) => (rule.id === ruleId ? nextRule : rule))
       : [...data.rules, nextRule];
     void saveData({ ...data, rules }, ruleId ? "Target updated." : "Target added.");
+    setShowTargetEditor(true);
     form.reset();
   };
 
@@ -526,6 +568,7 @@ export function App() {
           {showStayForm ? "Close" : "Add stay"}
         </button>
       </header>
+      <CountryOptionsDatalist />
 
       {message && (
         <div className="notice" role="status">
@@ -533,28 +576,36 @@ export function App() {
         </div>
       )}
 
-      <section className="target-strip" aria-label="Residency targets">
-        {progress.length > 0 ? (
-          progress.map((item) => <TargetCard key={item.rule.id} progress={item} />)
-        ) : (
-          <article className="target-card empty-target-card">
-            <h2>No targets configured</h2>
-            <p>Add a target to start tracking day-count pressure.</p>
-          </article>
-        )}
-      </section>
+      {data.rules.length === 0 && (
+        <section className="panel setup-panel">
+          <h2>
+            <Target size={18} /> Set up targets
+          </h2>
+          <p>Add at least one target to calculate day-count pressure. You can still add stays now.</p>
+        </section>
+      )}
 
-      <div className="target-actions">
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => setShowTargetEditor((value) => !value)}
-        >
-          <Settings size={16} /> {showTargetEditor ? "Hide target settings" : "Configure targets"}
-        </button>
-      </div>
+      {progress.length > 0 && (
+        <section className="target-strip" aria-label="Residency targets">
+          {progress.map((item) => (
+            <TargetCard key={item.rule.id} progress={item} />
+          ))}
+        </section>
+      )}
 
-      {showTargetEditor && (
+      {data.rules.length > 0 && (
+        <div className="target-actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setShowTargetEditor((value) => !value)}
+          >
+            <Target size={16} /> {showTargetEditor ? "Hide targets" : "Configure targets"}
+          </button>
+        </div>
+      )}
+
+      {targetEditorOpen && (
         <TargetEditor
           rules={data.rules}
           onSaveRule={upsertRule}
@@ -577,13 +628,7 @@ export function App() {
           >
             <label>
               Country
-              <select name="country" defaultValue="AE">
-                {countryOptions.map((code) => (
-                  <option key={code} value={code}>
-                    {countryName(code)}
-                  </option>
-                ))}
-              </select>
+              <CountryCodeField name="country" defaultValue="AE" />
             </label>
             <label>
               Entry
@@ -606,6 +651,12 @@ export function App() {
 
       <section className="timeline-section" aria-label="Stay timeline">
         <div className="timeline-line" aria-hidden="true" />
+        {timeline.length === 0 && (
+          <article className="timeline-empty">
+            <CalendarDays size={18} />
+            <span>No stays entered yet.</span>
+          </article>
+        )}
         {timeline.map((stay) => (
           <StayRow
             key={stay.id}
@@ -639,78 +690,72 @@ export function App() {
         ))}
       </section>
 
-      <ProjectionPanel
-        projection={projection}
-        setProjection={setProjection}
-        progress={projectionProgress}
-      />
+      {data.rules.length > 0 && (
+        <ProjectionPanel
+          projection={projection}
+          setProjection={setProjection}
+          progress={projectionProgress}
+        />
+      )}
 
-      <section className="panel settings-panel">
-        <h2>
-          <Settings size={18} /> Settings
-        </h2>
-        <form
-          className="settings-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            updateSettings(event.currentTarget);
-          }}
+      <div className="target-actions">
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setShowDataPanel((value) => !value)}
         >
-          <label>
-            Default gap country
-            <select name="homeBaseCountry" defaultValue={data.settings.homeBaseCountry}>
-              {countryOptions.map((code) => (
-                <option key={code} value={code}>
-                  {countryName(code)}
-                </option>
-              ))}
-            </select>
-            <span className="field-help">
-              Used only to infer timeline gaps between explicit stays.
-            </span>
-          </label>
-          <label>
-            Nationality
-            <select name="nationality" defaultValue={data.settings.nationality}>
-              {countryOptions.map((code) => (
-                <option key={code} value={code}>
-                  {countryName(code)}
-                </option>
-              ))}
-            </select>
-            <span className="field-help">Profile metadata for suggestions, not day counting.</span>
-          </label>
-          <label>
-            Legal residence
-            <select name="legalResidence" defaultValue={data.settings.legalResidence}>
-              {countryOptions.map((code) => (
-                <option key={code} value={code}>
-                  {countryName(code)}
-                </option>
-              ))}
-            </select>
-            <span className="field-help">Profile metadata for suggestions, not day counting.</span>
-          </label>
-          <button type="submit">
-            <Settings size={16} /> Save settings
-          </button>
-        </form>
-        <div className="storage-row">
-          <span>
-            Saved in {metadata.backend} · revision {metadata.revision ?? 1} ·{" "}
-            {formatSavedAt(metadata.savedAt)}
-          </span>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
-              void storage.exportData(data).then((blob) => downloadBlob(blob, "sojourn-data.json"));
+          <Database size={16} /> {showDataPanel ? "Hide data" : "Data & profile"}
+        </button>
+      </div>
+
+      {showDataPanel && (
+        <section className="panel settings-panel">
+          <h2>
+            <Database size={18} /> Data & profile
+          </h2>
+          <form
+            className="settings-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              updateProfile(event.currentTarget);
             }}
           >
-            <Download size={16} /> Export data
-          </button>
-        </div>
-      </section>
+            <label>
+              Nationality
+              <CountryCodeField name="nationality" defaultValue={data.settings.nationality} />
+              <span className="field-help">Profile metadata for suggestions, not day counting.</span>
+            </label>
+            <label>
+              Legal residence
+              <CountryCodeField
+                name="legalResidence"
+                defaultValue={data.settings.legalResidence}
+              />
+              <span className="field-help">Profile metadata for suggestions, not day counting.</span>
+            </label>
+            <button type="submit">
+              <Save size={16} /> Save profile
+            </button>
+          </form>
+          <div className="storage-row">
+            <span>
+              Saved in {metadata.backend} · revision {metadata.revision ?? 1} ·{" "}
+              {formatSavedAt(metadata.savedAt)}
+            </span>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                void storage
+                  .exportData(data)
+                  .then((blob) => downloadBlob(blob, "sojourn-data.json"));
+              }}
+            >
+              <Download size={16} /> Export data
+            </button>
+          </div>
+        </section>
+      )}
     </main>
   );
 }
@@ -732,6 +777,56 @@ function TargetCard({ progress }: { progress: RuleProgress }) {
       </div>
       <small>{describeRuleWindow(progress)}</small>
     </article>
+  );
+}
+
+function CountryOptionsDatalist() {
+  return (
+    <datalist id="country-code-options">
+      {countryOptions.map((code) => (
+        <option key={code} value={code}>
+          {countryName(code)}
+        </option>
+      ))}
+    </datalist>
+  );
+}
+
+function CountryCodeField({
+  name,
+  value,
+  defaultValue,
+  onChange,
+  required = true,
+  placeholder = "AE"
+}: {
+  name?: string;
+  value?: string;
+  defaultValue?: string;
+  onChange?: (value: string) => void;
+  required?: boolean;
+  placeholder?: string;
+}) {
+  const handleChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const next = normalizeCountryCode(event.currentTarget.value);
+    if (event.currentTarget.value !== next) {
+      event.currentTarget.value = next;
+    }
+    onChange?.(next);
+  };
+  return (
+    <input
+      name={name}
+      value={value}
+      defaultValue={value === undefined ? normalizeCountryCode(defaultValue ?? "") : undefined}
+      onChange={handleChange}
+      list="country-code-options"
+      maxLength={2}
+      pattern="[A-Za-z]{2}"
+      placeholder={placeholder}
+      required={required}
+      autoCapitalize="characters"
+    />
   );
 }
 
@@ -772,13 +867,13 @@ function StayRow({
   onSaveEvidenceEdit: (form: HTMLFormElement, item: EvidenceItem) => void;
   onDeleteEvidence: (item: EvidenceItem) => void;
 }) {
-  const isHomeBase = stay.source === "inferred_home_base";
+  const isUnaccounted = stay.source === "unaccounted";
   return (
-    <article className={`stay-row ${isHomeBase ? "home-base" : ""}`}>
+    <article className={`stay-row ${isUnaccounted ? "unaccounted" : ""}`}>
       <span className="timeline-dot" aria-hidden="true" />
-      <button type="button" className="stay-summary" onClick={onToggle}>
-        <span className="country-avatar" title={countryName(stay.country)}>
-          {countryFlag(stay.country)}
+      <button type="button" className="stay-summary" onClick={isUnaccounted ? undefined : onToggle}>
+        <span className="country-avatar" title={isUnaccounted ? "Unaccounted" : countryName(stay.country)}>
+          {isUnaccounted ? <CircleAlert size={17} /> : countryFlag(stay.country)}
         </span>
         <span className="stay-copy">
           <strong>{formatStayTitle(stay)}</strong>
@@ -786,29 +881,32 @@ function StayRow({
             {formatDateRange(stay.entryDate, stay.exitDate)} · {stay.label ?? "stay"}
           </small>
         </span>
-        <span className={`evidence-chip ${stay.evidenceStatus.tone}`}>
-          {stay.evidenceStatus.satisfied}/{stay.evidenceStatus.required}
-        </span>
+        {!isUnaccounted && (
+          <span className={`evidence-chip ${stay.evidenceStatus.tone}`}>
+            {stay.evidenceStatus.satisfied}/{stay.evidenceStatus.required}
+          </span>
+        )}
         <span className="stay-duration">{stay.durationDays}d</span>
-        {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        {!isUnaccounted &&
+          (expanded ? (
+            <ChevronUp className="expand-icon" size={16} />
+          ) : (
+            <ChevronDown className="expand-icon" size={16} />
+          ))}
       </button>
 
-      {expanded && (
+      {expanded && !isUnaccounted && (
         <div className="evidence-box">
-          {!isHomeBase && (
-            <div className="stay-actions">
-              <button type="button" className="secondary" onClick={onStartEdit}>
-                <Edit3 size={15} /> Edit stay
-              </button>
-              <button type="button" className="danger-button" onClick={onDelete}>
-                <Trash2 size={15} /> Delete
-              </button>
-            </div>
-          )}
+          <div className="stay-actions">
+            <button type="button" className="secondary" onClick={onStartEdit}>
+              <Edit3 size={15} /> Edit stay
+            </button>
+            <button type="button" className="danger-button" onClick={onDelete}>
+              <Trash2 size={15} /> Delete
+            </button>
+          </div>
 
-          {editing && !isHomeBase && (
-            <StayEditForm stay={stay} onCancel={onCancelEdit} onSave={onSaveEdit} />
-          )}
+          {editing && <StayEditForm stay={stay} onCancel={onCancelEdit} onSave={onSaveEdit} />}
 
           <div className="evidence-heading">
             <span>
@@ -873,13 +971,7 @@ function StayEditForm({
     >
       <label>
         Country
-        <select name="country" defaultValue={stay.country}>
-          {countryOptions.map((code) => (
-            <option key={code} value={code}>
-              {countryName(code)}
-            </option>
-          ))}
-        </select>
+        <CountryCodeField name="country" defaultValue={stay.country} />
       </label>
       <label>
         Entry
@@ -920,7 +1012,7 @@ function TargetEditor({
     <section className="panel target-editor">
       <div className="panel-title-row">
         <h2>
-          <Target size={18} /> Target settings
+          <Target size={18} /> Targets
         </h2>
         <div className="suggestion-row" aria-label="Suggested targets">
           {ruleSuggestions.map((suggestion) => {
@@ -1171,24 +1263,16 @@ function ProjectionPanel({
         <Target size={18} /> Projection
       </h2>
       <p>
-        Test a hypothetical stay against the same rules. This is where sabbaticals and future trips
-        become planning inputs instead of surprises.
+        Preview a future stay against current targets.
       </p>
       <div className="projection-grid">
         <label>
           Country
-          <select
+          <CountryCodeField
             value={projection.country}
-            onChange={(event) =>
-              setProjection((current) => ({ ...current, country: event.target.value }))
-            }
-          >
-            {countryOptions.map((code) => (
-              <option key={code} value={code}>
-                {countryName(code)}
-              </option>
-            ))}
-          </select>
+            onChange={(country) => setProjection((current) => ({ ...current, country }))}
+            required={false}
+          />
         </label>
         <label>
           Entry

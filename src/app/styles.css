@@ -83,7 +83,7 @@ button.icon-button {
 input,
 select {
   width: 100%;
-  min-height: 2.35rem;
+  height: 2.45rem;
   border: 1px solid #d5d0c7;
   border-radius: 7px;
   background: #ffffff;
@@ -176,6 +176,12 @@ label {
   background: #fffaf0;
   padding: 0.72rem 0.85rem;
   color: #514d43;
+}
+
+.setup-panel p {
+  margin: 0;
+  color: #6f6d64;
+  font-size: 0.86rem;
 }
 
 .target-strip {
@@ -315,6 +321,20 @@ label {
   padding: 0.2rem 0 0.2rem 1.15rem;
 }
 
+.timeline-empty {
+  margin: 0.3rem 0 0.6rem 0.1rem;
+  border: 1px dashed #d5d0c7;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #6f6d64;
+  padding: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
 .timeline-line {
   position: absolute;
   left: 0.35rem;
@@ -341,8 +361,8 @@ label {
   z-index: 1;
 }
 
-.stay-row.home-base .timeline-dot {
-  background: #c8c3b6;
+.stay-row.unaccounted .timeline-dot {
+  background: #ef9f27;
 }
 
 .stay-summary {
@@ -364,11 +384,20 @@ label {
   background: rgba(255, 253, 248, 0.75);
 }
 
+.stay-row.unaccounted .stay-summary {
+  cursor: default;
+}
+
+.stay-row.unaccounted .stay-summary:hover {
+  background: transparent;
+}
+
 .country-avatar {
   width: 2.2rem;
   height: 2.2rem;
   border-radius: 999px;
-  background: #e0f5ed;
+  border: 1px solid #d5d0c7;
+  background: transparent;
   color: #075340;
   display: grid;
   place-items: center;
@@ -376,9 +405,8 @@ label {
   font-weight: 800;
 }
 
-.home-base .country-avatar {
-  background: #ece7dc;
-  color: #4e4a41;
+.unaccounted .country-avatar {
+  color: #8a6122;
 }
 
 .stay-copy {
@@ -612,7 +640,7 @@ label {
 
 .checkbox-label input {
   width: auto;
-  min-height: auto;
+  height: auto;
 }
 
 .storage-row {
@@ -664,7 +692,7 @@ label {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
   }
 
-  .stay-summary svg {
+  .stay-summary .expand-icon {
     display: none;
   }
 

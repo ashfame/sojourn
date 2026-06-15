@@ -8,7 +8,9 @@ The current product model is intentionally small:
 - `Evidence`: stay, type, file metadata, date.
 - `Rule`: country scope, threshold, direction, window, counting convention.
 
-Home-base gaps are inferred from stays. The same rule engine powers current counts and future projections.
+The app starts empty, asks the user to configure targets first, and treats missing dates between
+stays as unaccounted time instead of guessing a home base. The same rule engine powers current
+counts and future projections.
 
 ## Stack
 
@@ -69,10 +71,13 @@ VITE_BASE_PATH=/sojourn/ npm run build:static
 ## Current UX
 
 - The main screen is a scrollable stay timeline.
+- First run has no demo stays, evidence, or targets.
+- When no targets exist, the app opens the target setup panel and offers suggested templates.
 - Each stay expands inline to show evidence.
 - Explicit stays can be edited or deleted from the expanded stay panel.
 - Evidence can be added, edited, or deleted from the expanded stay panel.
 - Evidence completeness is summarized as `x/4` on every stay.
+- Missing dates between entered stays render as `X days unaccounted for` timeline rows.
 - Target cards use one progress component with two meanings:
   - `minimum`: fill toward a target, safe when complete.
   - `ceiling`: spend down a budget, warning near the edge.
@@ -83,7 +88,8 @@ VITE_BASE_PATH=/sojourn/ npm run build:static
   - exclude exit date: nights-style counting,
   - any touched date: date-only inclusive, reserved for future time-aware stays.
 - For ceiling rules, the threshold is the maximum safe day count. For example, "under 60" is configured as `59`.
-- The default gap country is only used to infer unlabeled timeline gaps; nationality and legal residence are profile metadata.
+- Nationality and legal residence are profile metadata, hidden behind the `Data & profile` panel.
+- Export is also kept behind `Data & profile` so the main screen stays focused on targets and timeline.
 - UAE is suggested as a calendar-year minimum.
 - India is suggested as an Apr-Mar fiscal-year ceiling.
 - Schengen is suggested as a rolling 180-day window over a country set.

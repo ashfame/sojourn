@@ -1,14 +1,16 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
-import { createInitialData, migrateAppData } from "../../src/domain/seed";
+import { createInitialData, defaultRules, migrateAppData } from "../../src/domain/seed";
 import { createIndexedDbStorage } from "../../src/storage/indexedDbStorage";
 
 describe("indexedDbStorage", () => {
-  it("loads seeded data on first run", async () => {
+  it("loads empty starter data on first run", async () => {
     const storage = createIndexedDbStorage();
     const snapshot = await storage.load();
 
-    expect(snapshot.data.stays.length).toBeGreaterThan(0);
+    expect(snapshot.data.stays).toHaveLength(0);
+    expect(snapshot.data.evidence).toHaveLength(0);
+    expect(snapshot.data.rules).toHaveLength(0);
     expect(snapshot.metadata.backend).toBe("indexeddb");
   });
 
@@ -38,56 +40,77 @@ describe("indexedDbStorage", () => {
     expect(reloaded.metadata.revision).toBeGreaterThan(1);
   });
 
-  it("migrates the old India under-60 starter target to a 59-day ceiling", () => {
+  it("removes old starter targets during migration", () => {
     const data = createInitialData();
     const oldData = {
       ...data,
-      rules: data.rules.map((rule) =>
-        rule.id === "rule_india_nri"
-          ? {
-              ...rule,
-              threshold: 60,
-              description: "Stay under 60 days · conservative limit"
-            }
-          : rule
-      )
+      rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] }))
     };
 
     const migrated = migrateAppData(oldData);
 
-    expect(migrated.rules.find((rule) => rule.id === "rule_india_nri")?.threshold).toBe(59);
+    expect(migrated.rules).toHaveLength(0);
   });
 
   it("removes duplicate persisted targets during migration", () => {
     const data = createInitialData();
-    const india = data.rules.find((rule) => rule.id === "rule_india_nri");
-    if (!india) {
-      throw new Error("Missing India rule");
-    }
+    const india = {
+      ...defaultRules.find((rule) => rule.id === "rule_india_nri")!,
+      id: "custom_india"
+    };
 
     const migrated = migrateAppData({
       ...data,
-      rules: [...data.rules, { ...india, id: "rule_india_nri_duplicate", label: "Duplicate" }]
+      rules: [...data.rules, india, { ...india, id: "custom_india_duplicate", label: "Duplicate" }]
     });
 
     expect(migrated.rules.filter((rule) => rule.threshold === india.threshold)).toHaveLength(1);
   });
 
-  it("restores missing starter evidence without replacing edited evidence", () => {
+  it("removes old demo stays and their evidence during migration", () => {
     const data = createInitialData();
-    const editedVisa = {
-      ...data.evidence.find((item) => item.id === "ev_es_visa")!,
-      title: "Edited visa title"
-    };
 
     const migrated = migrateAppData({
       ...data,
-      evidence: [editedVisa]
+      stays: [
+        {
+          id: "stay_spain_2026",
+          country: "ES",
+          entryDate: "2026-05-24",
+          exitDate: "2026-06-03",
+          label: "Tenerife",
+          createdAt: "2026-06-10T00:00:00.000Z",
+          updatedAt: "2026-06-10T00:00:00.000Z"
+        },
+        {
+          id: "stay_real",
+          country: "IN",
+          entryDate: "2026-05-24",
+          exitDate: "2026-06-03",
+          label: "Real stay",
+          createdAt: "2026-06-10T00:00:00.000Z",
+          updatedAt: "2026-06-10T00:00:00.000Z"
+        }
+      ],
+      evidence: [
+        {
+          id: "ev_es_visa",
+          stayId: "stay_spain_2026",
+          type: "visa",
+          title: "Schengen visa",
+          createdAt: "2026-06-10T00:00:00.000Z"
+        },
+        {
+          id: "ev_real",
+          stayId: "stay_real",
+          type: "visa",
+          title: "Real evidence",
+          createdAt: "2026-06-10T00:00:00.000Z"
+        }
+      ]
     });
 
-    expect(migrated.evidence.find((item) => item.id === "ev_es_visa")?.title).toBe(
-      "Edited visa title"
-    );
-    expect(migrated.evidence.some((item) => item.id === "ev_es_ticket")).toBe(true);
+    expect(migrated.stays.map((stay) => stay.id)).toEqual(["stay_real"]);
+    expect(migrated.evidence.map((item) => item.id)).toEqual(["ev_real"]);
   });
 });

@@ -40,9 +40,7 @@ export const createTimeline = (
     evidenceByStay.set(item.stayId, [...(evidenceByStay.get(item.stayId) ?? []), item]);
   }
 
-  const yearStart = `${yearOf(asOf)}-01-01`;
-  let cursor = yearStart;
-  let trailingHomeStartCandidate: string | undefined;
+  let cursor: string | undefined;
   const timeline: TimelineStay[] = [];
 
   const pushStay = (
@@ -67,29 +65,35 @@ export const createTimeline = (
     });
   };
 
+  const pushUnaccounted = (start: string, end: string): void => {
+    const durationDays = daysInclusive(start, end);
+    timeline.push({
+      id: `gap_${start}_${end}`,
+      country: "",
+      entryDate: start,
+      exitDate: end,
+      label: `${durationDays} days unaccounted for`,
+      createdAt: data.updatedAt,
+      updatedAt: data.updatedAt,
+      source: "unaccounted",
+      countEntryDate: start,
+      countExitDate: end,
+      durationDays,
+      evidence: [],
+      evidenceStatus: { satisfied: 0, required: 0, missing: [], tone: "weak" }
+    });
+  };
+
   for (const stay of stays) {
     if (isAfter(stay.entryDate, asOf)) {
       continue;
     }
     const stayEnd = minDate(endDateFor(stay, asOf), asOf);
-    if (isBefore(cursor, stay.entryDate)) {
+    if (cursor && isBefore(cursor, stay.entryDate)) {
       const gapEnd = addDays(stay.entryDate, -1);
-      pushStay(
-        {
-          id: `home_${cursor}_${gapEnd}`,
-          country: data.settings.homeBaseCountry,
-          entryDate: cursor,
-          exitDate: gapEnd,
-          label: "home base",
-          createdAt: data.updatedAt,
-          updatedAt: data.updatedAt
-        },
-        "inferred_home_base",
-        cursor,
-        gapEnd
-      );
+      pushUnaccounted(cursor, gapEnd);
     }
-    const durationStart = maxDate(stay.entryDate, cursor);
+    const durationStart = cursor ? maxDate(stay.entryDate, cursor) : stay.entryDate;
     const actualStayEnd = endDateFor(stay, asOf);
     pushStay(
       { ...stay, exitDate: stayEnd },
@@ -100,26 +104,11 @@ export const createTimeline = (
       stayEnd,
       stay.exitDate
     );
-    cursor = addDays(maxDate(cursor, stayEnd), 1);
-    trailingHomeStartCandidate =
-      stay.country === data.settings.homeBaseCountry ? cursor : minDate(stayEnd, asOf);
+    cursor = addDays(cursor ? maxDate(cursor, stayEnd) : stayEnd, 1);
   }
 
-  const trailingHomeStart = trailingHomeStartCandidate ?? cursor;
-  if (!isAfter(trailingHomeStart, asOf)) {
-    pushStay(
-      {
-        id: `home_${trailingHomeStart}_open`,
-        country: data.settings.homeBaseCountry,
-        entryDate: trailingHomeStart,
-        label: "home base",
-        createdAt: data.updatedAt,
-        updatedAt: data.updatedAt
-      },
-      "inferred_home_base",
-      trailingHomeStart,
-      asOf
-    );
+  if (cursor && !isAfter(cursor, asOf)) {
+    pushUnaccounted(cursor, asOf);
   }
 
   return timeline.sort((left, right) => compareDate(right.entryDate, left.entryDate));
@@ -251,9 +240,21 @@ export const computeRuleProgress = (
 };
 
 export const timelineSummary = (timeline: TimelineStay[]): string => {
-  const totalDays = timeline.reduce((sum, stay) => sum + stay.durationDays, 0);
-  const countries = new Set(timeline.map((stay) => stay.country));
-  return `${totalDays} days tracked · ${countries.size} countries`;
+  if (timeline.length === 0) {
+    return "No stays yet";
+  }
+  const trackedDays = timeline
+    .filter((stay) => stay.source === "explicit")
+    .reduce((sum, stay) => sum + stay.durationDays, 0);
+  const unaccountedDays = timeline
+    .filter((stay) => stay.source === "unaccounted")
+    .reduce((sum, stay) => sum + stay.durationDays, 0);
+  const countries = new Set(
+    timeline.filter((stay) => stay.source === "explicit").map((stay) => stay.country)
+  );
+  return unaccountedDays > 0
+    ? `${trackedDays} days tracked · ${unaccountedDays} unaccounted`
+    : `${trackedDays} days tracked · ${countries.size} countries`;
 };
 
 export const describeRuleWindow = (progress: RuleProgress): string =>
@@ -275,7 +276,8 @@ export const projectionStay = (
   updatedAt: nowIso
 });
 
-export const formatStayTitle = (stay: TimelineStay): string => countryName(stay.country);
+export const formatStayTitle = (stay: TimelineStay): string =>
+  stay.source === "unaccounted" ? "Unaccounted period" : countryName(stay.country);
 
 export const ruleAsOfDate = (extraStays: Stay[], fallback: string): string =>
   extraStays.reduce((asOf, stay) => {

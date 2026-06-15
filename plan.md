@@ -38,10 +38,12 @@ Node is used only for development, tests, and building static assets into `dist`
 The main screen is the timeline.
 
 - Stays are sorted newest first.
-- Home-base gaps are inferred automatically from explicit stays.
+- Missing dates between explicit stays are shown as unaccounted timeline rows.
 - Each stay expands inline to show proof.
 - Each stay shows evidence completeness, such as `2/4`.
 - Target cards stay visible near the top so the user can see day-count pressure before browsing details.
+- First run starts empty and opens target setup before showing any target cards.
+- Profile and export controls are hidden behind a secondary data panel.
 - Projection is a first-class workflow: add a hypothetical stay and rerun the same rule engine.
 
 The target cards use one progress component with two meanings:
@@ -63,7 +65,8 @@ The target cards use one progress component with two meanings:
 }
 ```
 
-The timeline is derived from stays plus inferred home-base gaps.
+The timeline is derived from stays plus unaccounted gaps. The app does not guess where the user
+was when no stay has been entered for a date range.
 
 ### `Evidence`
 
@@ -108,10 +111,14 @@ V1 stores file metadata. Blob/file persistence can be added behind the same stor
 
 Country scope can contain multiple countries, which is how Schengen works without special-casing.
 
-## Built-In Rules
+## Suggested Rules
+
+The app starts with no active rules. It offers templates that the user can add or override:
 
 - UAE tax residency: `183` day minimum, calendar year, UAE country scope.
-- India NRI status: `59` day conservative ceiling for "under 60", Apr-Mar fiscal year, India country scope.
+- India under 60: `59` day ceiling, Apr-Mar fiscal year, India country scope.
+- India under 120: `119` day ceiling, Apr-Mar fiscal year, India country scope.
+- India under 183: `182` day ceiling, Apr-Mar fiscal year, India country scope.
 - Schengen 90/180: `90` day ceiling, rolling 180-day window, Schengen country set.
 
 Counting belongs to the rule, not to the stay. Targets support inclusive dates, exit-day exclusion, and any-touched-date semantics. Every target is user-editable, and multiple targets can share the same country scope as long as the behavioral rule is not duplicated.
@@ -200,13 +207,15 @@ The first rebuild should deliver:
 - Target cards with minimum/ceiling semantics.
 - Stay creation.
 - Stay editing and deletion.
+- Unaccounted gap rows between entered stays.
 - Expandable evidence panels.
 - Evidence metadata creation.
 - Evidence editing and deletion.
 - Target editor for custom countries, thresholds, directions, and tax-year windows.
+- Empty first-run state with suggested target setup.
 - Duplicate target prevention.
 - Projection panel.
-- Settings for home base, nationality, legal residence, and entry/exit policy.
+- Profile metadata and export controls behind a secondary data panel.
 - IndexedDB-backed `StorageDriver`.
 - Unit tests for rule windows and storage.
 - Playwright coverage for the main timeline/evidence path.

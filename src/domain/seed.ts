@@ -74,13 +74,13 @@ export const defaultRules: Rule[] = [
   }
 ];
 
-const starterStays = [
+const starterStays: Stay[] = [
   stay("stay_nepal_2026", "NP", "2026-04-02", "2026-05-23", "Pokhara"),
   stay("stay_spain_2026", "ES", "2026-05-24", "2026-06-03", "Tenerife"),
   stay("stay_poland_2026", "PL", "2026-06-03", "2026-06-08", "Krakow, WCEU")
 ];
 
-const starterEvidence = [
+const starterEvidence: EvidenceItem[] = [
   evidence("ev_np_visa", "stay_nepal_2026", "entry_stamp", "Visa on arrival stamp", "2026-04-02"),
   evidence("ev_np_flight", "stay_nepal_2026", "flight_ticket", "Flight · DXB → KTM", "2026-04-02"),
   evidence("ev_np_stay", "stay_nepal_2026", "accommodation", "Stay receipts · Pokhara"),
@@ -93,6 +93,10 @@ const starterEvidence = [
   evidence("ev_pl_hotel", "stay_poland_2026", "accommodation", "Hotel booking · Krakow")
 ];
 
+const starterStayIds = new Set(starterStays.map((item) => item.id));
+const starterEvidenceIds = new Set(starterEvidence.map((item) => item.id));
+const starterRuleIds = new Set(defaultRules.map((item) => item.id));
+
 export const createInitialData = (): AppData => ({
   schemaVersion: 1,
   settings: {
@@ -101,10 +105,10 @@ export const createInitialData = (): AppData => ({
     legalResidence: "AE",
     countEntryExitDays: true
   },
-  stays: starterStays.map((item) => ({ ...item })),
-  evidence: starterEvidence.map((item) => ({ ...item })),
-  rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] })),
-  updatedAt: createdAt
+  stays: [],
+  evidence: [],
+  rules: [],
+  updatedAt: new Date().toISOString()
 });
 
 const windowSignature = (window: WindowDefinition): string => {
@@ -128,19 +132,39 @@ const ruleSignature = (rule: Rule): string =>
 
 export const migrateAppData = (data: AppData): AppData => {
   let changed = false;
-  const migratedRules = data.rules.map((rule) => {
+  const removedStarterStayIds = new Set<string>();
+  const stays = data.stays.filter((item) => {
+    if (starterStayIds.has(item.id)) {
+      removedStarterStayIds.add(item.id);
+      changed = true;
+      return false;
+    }
+    return true;
+  });
+  const evidence = data.evidence.filter((item) => {
+    if (starterEvidenceIds.has(item.id) || removedStarterStayIds.has(item.stayId)) {
+      changed = true;
+      return false;
+    }
+    return true;
+  });
+  const migratedRules = data.rules.flatMap((rule) => {
+    if (starterRuleIds.has(rule.id)) {
+      changed = true;
+      return [];
+    }
     if (rule.id === "rule_india_nri" && rule.threshold === 60) {
       changed = true;
-      return {
+      return [{
         ...rule,
         threshold: 59,
         description:
           rule.description === "Stay under 60 days · conservative limit"
             ? "Maximum 59 days · FY Apr-Mar"
             : rule.description
-      };
+      }];
     }
-    return rule;
+    return [rule];
   });
 
   const seenRules = new Set<string>();
@@ -155,14 +179,5 @@ export const migrateAppData = (data: AppData): AppData => {
     rules.push(rule);
   }
 
-  const stayIds = new Set(data.stays.map((stay) => stay.id));
-  const evidenceIds = new Set(data.evidence.map((item) => item.id));
-  const missingStarterEvidence = starterEvidence.filter(
-    (item) => stayIds.has(item.stayId) && !evidenceIds.has(item.id)
-  );
-  if (missingStarterEvidence.length > 0) {
-    changed = true;
-  }
-
-  return changed ? { ...data, evidence: [...data.evidence, ...missingStarterEvidence], rules } : data;
+  return changed ? { ...data, stays, evidence, rules } : data;
 };

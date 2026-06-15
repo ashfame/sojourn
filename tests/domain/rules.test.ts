@@ -1,39 +1,107 @@
 import { describe, expect, it } from "vitest";
-import { createInitialData } from "../../src/domain/seed";
+import { createInitialData, defaultRules } from "../../src/domain/seed";
 import { computeRuleProgress, createTimeline, projectionStay } from "../../src/domain/rules";
 import type { AppData } from "../../src/domain/types";
 
 const progressByRule = (data: AppData, asOf: string) =>
   new Map(computeRuleProgress(data, asOf).map((item) => [item.rule.id, item]));
 
-describe("rule engine", () => {
-  it("infers home-base stays around explicit travel", () => {
-    const data = createInitialData();
-    const timeline = createTimeline(data, "2026-06-10");
+const sampleData = (): AppData => ({
+  ...createInitialData(),
+  rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] })),
+  stays: [
+    {
+      id: "stay_nepal_2026",
+      country: "NP",
+      entryDate: "2026-04-02",
+      exitDate: "2026-05-23",
+      label: "Pokhara",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      updatedAt: "2026-06-10T00:00:00.000Z"
+    },
+    {
+      id: "stay_spain_2026",
+      country: "ES",
+      entryDate: "2026-05-24",
+      exitDate: "2026-06-03",
+      label: "Tenerife",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      updatedAt: "2026-06-10T00:00:00.000Z"
+    },
+    {
+      id: "stay_poland_2026",
+      country: "PL",
+      entryDate: "2026-06-03",
+      exitDate: "2026-06-08",
+      label: "Krakow, WCEU",
+      createdAt: "2026-06-10T00:00:00.000Z",
+      updatedAt: "2026-06-10T00:00:00.000Z"
+    }
+  ]
+});
 
-    expect(timeline[0]).toMatchObject({
-      country: "AE",
-      source: "inferred_home_base",
-      entryDate: "2026-06-08"
-    });
-    expect(timeline.some((stay) => stay.country === "PL" && stay.durationDays === 5)).toBe(true);
-    expect(timeline.some((stay) => stay.country === "ES" && stay.durationDays === 11)).toBe(true);
-    expect(timeline.some((stay) => stay.country === "AE" && stay.entryDate === "2026-01-01")).toBe(
+describe("rule engine", () => {
+  it("starts with no targets or stays", () => {
+    const data = createInitialData();
+
+    expect(data.rules).toHaveLength(0);
+    expect(data.stays).toHaveLength(0);
+    expect(createTimeline(data, "2026-06-10")).toHaveLength(0);
+  });
+
+  it("renders unaccounted gaps around explicit travel", () => {
+    const data = createInitialData();
+    data.stays.push(
+      {
+        id: "stay_india_1",
+        country: "IN",
+        entryDate: "2026-04-10",
+        exitDate: "2026-04-19",
+        label: "Family visit",
+        createdAt: "2026-04-01T00:00:00.000Z",
+        updatedAt: "2026-04-01T00:00:00.000Z"
+      },
+      {
+        id: "stay_india_2",
+        country: "IN",
+        entryDate: "2026-05-01",
+        exitDate: "2026-05-02",
+        label: "Follow-up",
+        createdAt: "2026-04-01T00:00:00.000Z",
+        updatedAt: "2026-04-01T00:00:00.000Z"
+      }
+    );
+
+    const timeline = createTimeline(data, "2026-05-02");
+
+    expect(timeline.some((stay) => stay.source === "unaccounted" && stay.durationDays === 11)).toBe(
       true
     );
+    expect(timeline.some((stay) => stay.label === "11 days unaccounted for")).toBe(true);
+  });
+
+  it("keeps transfer-day display durations for explicit travel", () => {
+    const data = sampleData();
+    const timeline = createTimeline(data, "2026-06-10");
+
+    expect(timeline.some((stay) => stay.source === "unaccounted" && stay.entryDate === "2026-06-09")).toBe(
+      true
+    );
+    expect(timeline.some((stay) => stay.country === "PL" && stay.durationDays === 5)).toBe(true);
+    expect(timeline.some((stay) => stay.country === "ES" && stay.durationDays === 11)).toBe(true);
   });
 
   it("counts UAE minimum days in a calendar year", () => {
-    const data = createInitialData();
+    const data = sampleData();
     const uae = progressByRule(data, "2026-06-10").get("rule_uae_183");
 
-    expect(uae?.usedDays).toBe(94);
-    expect(uae?.remaining).toBe(89);
+    expect(uae?.usedDays).toBe(0);
+    expect(uae?.remaining).toBe(183);
     expect(uae?.rule.direction).toBe("minimum");
   });
 
   it("counts India ceiling days in an Apr-Mar fiscal year", () => {
-    const data = createInitialData();
+    const data = sampleData();
     data.stays.push({
       id: "stay_india",
       country: "IN",
@@ -53,7 +121,7 @@ describe("rule engine", () => {
   });
 
   it("can exclude the exit day for nights-style counting", () => {
-    const data = createInitialData();
+    const data = sampleData();
     data.rules.push({
       id: "rule_india_nights",
       label: "India nights",
@@ -80,7 +148,7 @@ describe("rule engine", () => {
   });
 
   it("does not drop the reporting period end when exit-day exclusion falls after the window", () => {
-    const data = createInitialData();
+    const data = sampleData();
     data.rules.push({
       id: "rule_fr_nights",
       label: "France nights",
@@ -107,7 +175,7 @@ describe("rule engine", () => {
   });
 
   it("counts Schengen days in the rolling 180-day window", () => {
-    const data = createInitialData();
+    const data = sampleData();
     const schengen = progressByRule(data, "2026-06-10").get("rule_schengen_90_180");
 
     expect(schengen?.usedDays).toBe(16);
@@ -116,7 +184,7 @@ describe("rule engine", () => {
   });
 
   it("uses the same rules for future projections", () => {
-    const data = createInitialData();
+    const data = sampleData();
     const projected = projectionStay({
       country: "NP",
       entryDate: "2026-08-01",
