@@ -100,6 +100,40 @@ describe("rule engine", () => {
     expect(uae?.rule.direction).toBe("minimum");
   });
 
+  it("does not count closed prior-period stays in the current target window", () => {
+    const data = {
+      ...createInitialData(),
+      rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] })),
+      stays: [
+        {
+          id: "stay_uae_last_year",
+          country: "AE",
+          entryDate: "2025-11-01",
+          exitDate: "2025-12-31",
+          label: "Previous calendar year",
+          createdAt: "2025-11-01T00:00:00.000Z",
+          updatedAt: "2025-11-01T00:00:00.000Z"
+        },
+        {
+          id: "stay_india_previous_fy",
+          country: "IN",
+          entryDate: "2026-01-10",
+          exitDate: "2026-01-20",
+          label: "Previous India fiscal year",
+          createdAt: "2026-01-10T00:00:00.000Z",
+          updatedAt: "2026-01-10T00:00:00.000Z"
+        }
+      ]
+    };
+
+    const progress = progressByRule(data, "2026-06-15");
+
+    expect(progress.get("rule_uae_183")?.windowLabel).toBe("2026 calendar year");
+    expect(progress.get("rule_uae_183")?.usedDays).toBe(0);
+    expect(progress.get("rule_india_nri")?.windowLabel).toBe("FY 2026-27");
+    expect(progress.get("rule_india_nri")?.usedDays).toBe(0);
+  });
+
   it("extends an active stay through the current as-of date", () => {
     const data = {
       ...createInitialData(),
@@ -128,6 +162,35 @@ describe("rule engine", () => {
       durationDays: 2
     });
     expect(timeline[0]?.knownExitDate).toBeUndefined();
+  });
+
+  it("counts stored stays only through as-of even when a future exit is known", () => {
+    const data = {
+      ...createInitialData(),
+      rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] })),
+      stays: [
+        {
+          id: "stay_uae_known_future_exit",
+          country: "AE",
+          entryDate: "2025-12-15",
+          exitDate: "2026-12-31",
+          label: "Current stay with planned exit",
+          createdAt: "2025-12-15T00:00:00.000Z",
+          updatedAt: "2025-12-15T00:00:00.000Z"
+        }
+      ]
+    };
+
+    const uae = progressByRule(data, "2026-06-15").get("rule_uae_183");
+    const timeline = createTimeline(data, "2026-06-15");
+
+    expect(uae?.usedDays).toBe(166);
+    expect(timeline[0]).toMatchObject({
+      id: "stay_uae_known_future_exit",
+      exitDate: "2026-06-15",
+      knownExitDate: "2026-12-31",
+      durationDays: 183
+    });
   });
 
   it("counts India ceiling days in an Apr-Mar fiscal year", () => {

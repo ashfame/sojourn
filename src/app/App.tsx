@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState, type ChangeEvent, type ComponentType } fr
 import { COUNTRY_NAMES, countryFlag, countryName } from "../domain/countries";
 import {
   formatDateRange,
+  isAfter,
   isBefore,
   millisecondsUntilNextUtcDay,
   todayString
@@ -232,6 +233,11 @@ const ruleSignature = (rule: Pick<Rule, "countryScope" | "direction" | "threshol
 const hasEquivalentRule = (rules: Rule[], candidate: Rule, ignoredRuleId?: string): boolean =>
   rules.some((rule) => rule.id !== ignoredRuleId && ruleSignature(rule) === ruleSignature(candidate));
 
+const isActiveTimelineStay = (stay: TimelineStay): boolean =>
+  stay.source === "explicit" &&
+  (stay.knownExitDate === undefined ||
+    (stay.exitDate !== undefined && isAfter(stay.knownExitDate, stay.exitDate)));
+
 const countingDescriptions: Record<CountingConvention, string> = {
   entry_exit_count: "Counts both the arrival date and departure date.",
   exclude_exit_day: "Counts the arrival date, but not the departure date.",
@@ -434,7 +440,7 @@ export function App() {
   };
 
   const endStayToday = (stay: TimelineStay): void => {
-    if (!data || stay.source !== "explicit" || stay.knownExitDate !== undefined) {
+    if (!data || !isActiveTimelineStay(stay)) {
       return;
     }
     const now = new Date().toISOString();
@@ -928,7 +934,8 @@ function StayRow({
   onDeleteEvidence: (item: EvidenceItem) => void;
 }) {
   const isUnaccounted = stay.source === "unaccounted";
-  const isActive = stay.source === "explicit" && stay.knownExitDate === undefined;
+  const isActive = isActiveTimelineStay(stay);
+  const displayExitDate = isActive ? stay.knownExitDate : stay.exitDate;
   return (
     <article className={`stay-row ${isUnaccounted ? "unaccounted" : ""}`}>
       <span className="timeline-dot" aria-hidden="true" />
@@ -939,8 +946,7 @@ function StayRow({
         <span className="stay-copy">
           <strong>{formatStayTitle(stay)}</strong>
           <small>
-            {formatDateRange(stay.entryDate, isActive ? undefined : stay.exitDate)} ·{" "}
-            {stay.label ?? "stay"}
+            {formatDateRange(stay.entryDate, displayExitDate)} · {stay.label ?? "stay"}
             {isActive && <span className="active-chip">Active</span>}
           </small>
         </span>

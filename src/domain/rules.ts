@@ -95,11 +95,12 @@ export const createTimeline = (
     }
     const durationStart = cursor ? maxDate(stay.entryDate, cursor) : stay.entryDate;
     const actualStayEnd = endDateFor(stay, asOf);
+    const countExitDate = stay.projected ? actualStayEnd : stayEnd;
     pushStay(
       { ...stay, exitDate: stayEnd },
       "explicit",
       stay.entryDate,
-      actualStayEnd,
+      countExitDate,
       isAfter(durationStart, stayEnd) ? stay.entryDate : durationStart,
       stayEnd,
       stay.exitDate
