@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
 import { createInitialData, defaultRules, migrateAppData } from "../../src/domain/seed";
-import { createIndexedDbStorage } from "../../src/storage/indexedDbStorage";
+import { STORAGE_BACKUP_KEY, createIndexedDbStorage } from "../../src/storage/indexedDbStorage";
 
 describe("indexedDbStorage", () => {
   it("loads empty starter data on first run", async () => {
@@ -38,6 +38,39 @@ describe("indexedDbStorage", () => {
 
     expect(reloaded.data.stays.some((stay) => stay.id === "stay_test")).toBe(true);
     expect(reloaded.metadata.revision).toBeGreaterThan(1);
+  });
+
+  it("uses the local mirror when it is newer than the IndexedDB record", async () => {
+    const storage = createIndexedDbStorage();
+    const data = createInitialData();
+    const mirroredData = {
+      ...data,
+      stays: [
+        {
+          id: "stay_from_mirror",
+          country: "AE",
+          entryDate: "2026-06-01",
+          exitDate: "2026-06-02",
+          label: "Mirror",
+          createdAt: "2026-06-01T00:00:00.000Z",
+          updatedAt: "2026-06-01T00:00:00.000Z"
+        }
+      ]
+    };
+
+    localStorage.setItem(
+      STORAGE_BACKUP_KEY,
+      JSON.stringify({
+        key: "current",
+        data: mirroredData,
+        savedAt: "2999-01-01T00:00:00.000Z",
+        revision: 999
+      })
+    );
+    const reloaded = await storage.load();
+
+    expect(reloaded.data.stays.map((stay) => stay.id)).toContain("stay_from_mirror");
+    expect(reloaded.metadata.revision).toBe(999);
   });
 
   it("removes old starter targets during migration", () => {

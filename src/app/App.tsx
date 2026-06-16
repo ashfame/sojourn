@@ -53,7 +53,7 @@ import type {
   TimelineStay,
   WindowDefinition
 } from "../domain/types";
-import { createIndexedDbStorage } from "../storage/indexedDbStorage";
+import { STORAGE_BACKUP_KEY, createIndexedDbStorage } from "../storage/indexedDbStorage";
 import type { StorageDriver, StorageMetadata } from "../storage/storageDriver";
 
 const storage: StorageDriver = createIndexedDbStorage();
@@ -261,20 +261,28 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    void storage
-      .load()
-      .then((snapshot) => {
-        if (!active) {
-          return;
-        }
-        setData(snapshot.data);
-        setMetadata(snapshot.metadata);
-      })
-      .catch((error: unknown) => {
-        setMessage(error instanceof Error ? error.message : String(error));
-      });
+    const loadSnapshot = async (): Promise<void> => {
+      const snapshot = await storage.load();
+      if (!active) {
+        return;
+      }
+      setData(snapshot.data);
+      setMetadata(snapshot.metadata);
+    };
+    void loadSnapshot().catch((error: unknown) => {
+      setMessage(error instanceof Error ? error.message : String(error));
+    });
+    const handleStorage = (event: StorageEvent): void => {
+      if (event.key === STORAGE_BACKUP_KEY) {
+        void loadSnapshot().catch((error: unknown) => {
+          setMessage(error instanceof Error ? error.message : String(error));
+        });
+      }
+    };
+    window.addEventListener("storage", handleStorage);
     return () => {
       active = false;
+      window.removeEventListener("storage", handleStorage);
     };
   }, []);
 
