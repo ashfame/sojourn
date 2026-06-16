@@ -61,6 +61,7 @@ jobs:
         run: npm run build:static
         env:
           VITE_BASE_PATH: /sojourn/
+          VITE_GIT_COMMIT: ${{ github.sha }}
 
       - name: Upload GitHub Pages artifact
         if: ${{ github.event_name != 'pull_request' }}
