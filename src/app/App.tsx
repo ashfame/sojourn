@@ -245,6 +245,10 @@ const countingDescriptions: Record<CountingConvention, string> = {
     "Counts any date touched by the stay. With date-only stays this matches inclusive counting."
 };
 
+type TimelineRenderItem =
+  | { type: "year"; id: string; year: string }
+  | { type: "stay"; id: string; stay: TimelineStay };
+
 export function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [metadata, setMetadata] = useState<StorageMetadata>({ backend: "indexeddb" });
@@ -321,6 +325,19 @@ export function App() {
   }, []);
 
   const timeline = useMemo(() => (data ? createTimeline(data, asOf) : []), [asOf, data]);
+  const timelineItems = useMemo<TimelineRenderItem[]>(() => {
+    const items: TimelineRenderItem[] = [];
+    let currentYear: string | undefined;
+    for (const stay of timeline) {
+      const year = stay.entryDate.slice(0, 4);
+      if (year !== currentYear) {
+        items.push({ type: "year", id: `year_${year}`, year });
+        currentYear = year;
+      }
+      items.push({ type: "stay", id: stay.id, stay });
+    }
+    return items;
+  }, [timeline]);
   const progress = useMemo(() => (data ? computeRuleProgress(data, asOf) : []), [asOf, data]);
   const projectedStays = useMemo(
     () =>
@@ -773,38 +790,42 @@ export function App() {
             <span>No stays entered yet.</span>
           </article>
         )}
-        {timeline.map((stay) => (
-          <StayRow
-            key={stay.id}
-            stay={stay}
-            expanded={expandedStayIds.has(stay.id)}
-            onToggle={() => toggleStay(stay.id)}
-            addingProof={proofStayId === stay.id}
-            editing={editingStayId === stay.id}
-            editingEvidenceId={editingEvidenceId}
-            onStartEdit={() => {
-              setEditingStayId(stay.id);
-              setProofStayId(null);
-            }}
-            onCancelEdit={() => setEditingStayId(null)}
-            onSaveEdit={(form) => updateStay(form, stay.id)}
-            onDelete={() => deleteStay(stay)}
-            onEndToday={() => endStayToday(stay)}
-            onAddProof={() => {
-              setProofStayId(stay.id);
-              setEditingEvidenceId(null);
-            }}
-            onCancelProof={() => setProofStayId(null)}
-            onSaveProof={(form) => addEvidence(form, stay.id)}
-            onStartEditEvidence={(item) => {
-              setEditingEvidenceId(item.id);
-              setProofStayId(null);
-            }}
-            onCancelEditEvidence={() => setEditingEvidenceId(null)}
-            onSaveEvidenceEdit={updateEvidence}
-            onDeleteEvidence={deleteEvidence}
-          />
-        ))}
+        {timelineItems.map((item) =>
+          item.type === "year" ? (
+            <TimelineYearMarker key={item.id} year={item.year} />
+          ) : (
+            <StayRow
+              key={item.id}
+              stay={item.stay}
+              expanded={expandedStayIds.has(item.stay.id)}
+              onToggle={() => toggleStay(item.stay.id)}
+              addingProof={proofStayId === item.stay.id}
+              editing={editingStayId === item.stay.id}
+              editingEvidenceId={editingEvidenceId}
+              onStartEdit={() => {
+                setEditingStayId(item.stay.id);
+                setProofStayId(null);
+              }}
+              onCancelEdit={() => setEditingStayId(null)}
+              onSaveEdit={(form) => updateStay(form, item.stay.id)}
+              onDelete={() => deleteStay(item.stay)}
+              onEndToday={() => endStayToday(item.stay)}
+              onAddProof={() => {
+                setProofStayId(item.stay.id);
+                setEditingEvidenceId(null);
+              }}
+              onCancelProof={() => setProofStayId(null)}
+              onSaveProof={(form) => addEvidence(form, item.stay.id)}
+              onStartEditEvidence={(evidence) => {
+                setEditingEvidenceId(evidence.id);
+                setProofStayId(null);
+              }}
+              onCancelEditEvidence={() => setEditingEvidenceId(null)}
+              onSaveEvidenceEdit={updateEvidence}
+              onDeleteEvidence={deleteEvidence}
+            />
+          )
+        )}
       </section>
 
       {data.rules.length > 0 && (
@@ -967,6 +988,15 @@ function CountryCodeField({
       required={required}
       autoCapitalize="characters"
     />
+  );
+}
+
+function TimelineYearMarker({ year }: { year: string }) {
+  return (
+    <div className="timeline-year-marker" role="separator" aria-label={`Timeline year ${year}`}>
+      <span className="timeline-year-dot" aria-hidden="true" />
+      <span className="timeline-year-label">{year}</span>
+    </div>
   );
 }
 

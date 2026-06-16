@@ -364,6 +364,45 @@ label {
   background: #d5d0c7;
 }
 
+.timeline-year-marker {
+  position: relative;
+  min-height: 2rem;
+  margin: 0.45rem 0 0.15rem -1.15rem;
+  padding-left: 1.15rem;
+  display: flex;
+  align-items: center;
+}
+
+.timeline-year-marker::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  margin-left: 0.65rem;
+  background: #d5d0c7;
+}
+
+.timeline-year-dot {
+  position: absolute;
+  left: 0;
+  width: 0.82rem;
+  height: 0.82rem;
+  border: 2px solid #0f6e56;
+  border-radius: 999px;
+  background: #f4f1ea;
+  z-index: 2;
+}
+
+.timeline-year-label {
+  border: 1px solid #d5d0c7;
+  border-radius: 999px;
+  background: #fffdf8;
+  color: #3d403b;
+  padding: 0.18rem 0.58rem;
+  font-size: 0.76rem;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
 .stay-row {
   position: relative;
   display: grid;

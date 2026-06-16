@@ -106,6 +106,15 @@ test("imports a JSON snapshot into an empty app", async ({ page }) => {
         label: "Dubai import",
         createdAt: "2026-06-01T00:00:00.000Z",
         updatedAt: "2026-06-01T00:00:00.000Z"
+      },
+      {
+        id: "stay_imported_uae_2025",
+        country: "AE",
+        entryDate: "2025-12-01",
+        exitDate: "2025-12-05",
+        label: "Dubai previous year",
+        createdAt: "2025-12-01T00:00:00.000Z",
+        updatedAt: "2025-12-01T00:00:00.000Z"
       }
     ],
     evidence: [],
@@ -138,6 +147,8 @@ test("imports a JSON snapshot into an empty app", async ({ page }) => {
   await expect(page.getByText("Data imported.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Imported UAE target" })).toBeVisible();
   await expect(page.getByText("Dubai import")).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Timeline year 2026" })).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Timeline year 2025" })).toBeVisible();
   await expect(page.getByText("5 of 183 days")).toBeVisible();
   await expect(page.getByText("178 days to go")).toBeVisible();
 });
