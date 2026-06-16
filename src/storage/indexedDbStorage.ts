@@ -1,10 +1,11 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { createInitialData, migrateAppData } from "../domain/seed";
 import type { AppData } from "../domain/types";
+import { blobToArrayBuffer, createArchive, parseArchive } from "./archive";
 import type { PersistedAppData, StorageDriver, StorageMetadata } from "./storageDriver";
 
 const DB_NAME = "sojourn-browser-store";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const APP_KEY = "current";
 export const STORAGE_BACKUP_KEY = "sojourn-browser-store.current.v1";
 
@@ -12,6 +13,10 @@ interface SojournDb extends DBSchema {
   app: {
     key: string;
     value: StoredRecord;
+  };
+  files: {
+    key: string;
+    value: FileRecord;
   };
 }
 
@@ -22,6 +27,13 @@ interface StoredRecord {
   revision: number;
 }
 
+interface FileRecord {
+  key: string;
+  buffer: ArrayBuffer;
+  type: string;
+  savedAt: string;
+}
+
 let dbPromise: Promise<IDBPDatabase<SojournDb>> | undefined;
 
 const getDb = (): Promise<IDBPDatabase<SojournDb>> => {
@@ -29,6 +41,9 @@ const getDb = (): Promise<IDBPDatabase<SojournDb>> => {
     upgrade(db) {
       if (!db.objectStoreNames.contains("app")) {
         db.createObjectStore("app", { keyPath: "key" });
+      }
+      if (!db.objectStoreNames.contains("files")) {
+        db.createObjectStore("files", { keyPath: "key" });
       }
     }
   });
@@ -120,12 +135,79 @@ export const createIndexedDbStorage = (): StorageDriver => ({
     return metadata(savedAt, revision);
   },
 
-  exportData(data: AppData): Promise<Blob> {
-    return Promise.resolve(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+  async exportData(data: AppData): Promise<Blob> {
+    return createArchive(data, async (item) => this.getEvidenceFile(item));
   },
 
   async importData(blob: Blob): Promise<AppData> {
-    const text = await blob.text();
-    return migrateAppData(JSON.parse(text) as AppData);
+    const fileName =
+      typeof File !== "undefined" && blob instanceof File ? blob.name.toLowerCase() : "";
+    const type = "type" in blob ? blob.type : "";
+    const looksJson = type.includes("json") || fileName.endsWith(".json");
+    if (looksJson) {
+      const text = await blob.text();
+      return migrateAppData(JSON.parse(text) as AppData);
+    }
+    try {
+      const archive = await parseArchive(blob);
+      const db = await getDb();
+      const data = {
+        ...archive.data,
+        evidence: archive.data.evidence.map((item) => {
+          const file = archive.files.find((candidate) => candidate.evidenceId === item.id);
+          if (!file) {
+            return item;
+          }
+          return {
+            ...item,
+            blobKey: `evidence/${item.id}`,
+            fileName: file.fileName,
+            ...(file.mimeType ? { mimeType: file.mimeType } : {}),
+            sizeBytes: file.sizeBytes
+          };
+        })
+      };
+      await Promise.all(
+        archive.files.map(async (file) =>
+          db.put("files", {
+            key: `evidence/${file.evidenceId}`,
+            buffer: await blobToArrayBuffer(file.blob),
+            type: file.blob.type,
+            savedAt: new Date().toISOString()
+          })
+        )
+      );
+      return data;
+    } catch {
+      const text = await blob.text();
+      return migrateAppData(JSON.parse(text) as AppData);
+    }
+  },
+
+  async saveEvidenceFile(key: string, blob: Blob): Promise<void> {
+    const db = await getDb();
+    await db.put("files", {
+      key,
+      buffer: await blobToArrayBuffer(blob),
+      type: blob.type,
+      savedAt: new Date().toISOString()
+    });
+  },
+
+  async getEvidenceFile(item): Promise<Blob | undefined> {
+    if (!item.blobKey) {
+      return undefined;
+    }
+    const db = await getDb();
+    const record = await db.get("files", item.blobKey);
+    return record ? new Blob([record.buffer], { type: record.type }) : undefined;
+  },
+
+  async deleteEvidenceFile(key?: string): Promise<void> {
+    if (!key) {
+      return;
+    }
+    const db = await getDb();
+    await db.delete("files", key);
   }
 });

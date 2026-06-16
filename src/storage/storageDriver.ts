@@ -1,4 +1,4 @@
-import type { AppData } from "../domain/types";
+import type { AppData, EvidenceItem } from "../domain/types";
 
 export interface StorageMetadata {
   backend: "indexeddb" | "remote_sqlite" | "memory";
@@ -16,6 +16,9 @@ export interface StorageDriver {
   save(data: AppData): Promise<StorageMetadata>;
   exportData(data: AppData): Promise<Blob>;
   importData(blob: Blob): Promise<AppData>;
+  saveEvidenceFile(key: string, blob: Blob): Promise<void>;
+  getEvidenceFile(item: EvidenceItem): Promise<Blob | undefined>;
+  deleteEvidenceFile(key?: string): Promise<void>;
 }
 
 export interface RemoteSyncDriver {

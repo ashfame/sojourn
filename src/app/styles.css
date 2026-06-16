@@ -91,6 +91,10 @@ select {
   padding: 0.5rem 0.62rem;
 }
 
+input[type="date"] {
+  appearance: auto;
+}
+
 button:focus-visible,
 input:focus,
 select:focus {
@@ -134,13 +138,39 @@ label {
   position: sticky;
   top: 0;
   z-index: 2;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   justify-content: space-between;
   gap: 1rem;
   padding: 0.8rem 0 0.7rem;
   background: rgba(244, 241, 234, 0.95);
   backdrop-filter: blur(10px);
+}
+
+.header-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.view-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.view-switcher button {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.6rem;
+}
+
+button.secondary.active {
+  border-color: #1b6d55;
+  background: #e0f5ed;
+  color: #075340;
 }
 
 .app-header h1,
@@ -771,9 +801,106 @@ label {
   display: none;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  padding: 1rem;
+  background: rgba(37, 37, 34, 0.58);
+  display: grid;
+  place-items: center;
+}
+
+.preview-modal {
+  width: min(100%, 56rem);
+  height: min(100%, 42rem);
+  border: 1px solid #d5d0c7;
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 18px 48px rgba(37, 37, 34, 0.25);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.preview-modal-header {
+  border-bottom: 1px solid #ece7dc;
+  padding: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.preview-modal-header span {
+  min-width: 0;
+  display: grid;
+  gap: 0.14rem;
+}
+
+.preview-modal-header strong {
+  overflow-wrap: anywhere;
+}
+
+.preview-modal-header small {
+  color: #77746b;
+  font-size: 0.76rem;
+}
+
+.preview-modal-body {
+  min-height: 0;
+  background: #ebe7dd;
+  display: grid;
+}
+
+.preview-modal-body iframe,
+.preview-modal-body img {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.preview-modal-body img {
+  object-fit: contain;
+  padding: 0.75rem;
+}
+
+.preview-fallback {
+  place-self: center;
+  display: grid;
+  justify-items: center;
+  gap: 0.65rem;
+  color: #514d43;
+}
+
+.preview-fallback a {
+  color: #0f6e56;
+  font-weight: 800;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     padding: 0.85rem;
+  }
+
+  .app-header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .header-actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .header-actions > button,
+  .view-switcher button {
+    width: 100%;
+  }
+
+  .view-switcher {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .target-strip,
@@ -832,5 +959,13 @@ label {
 
   .settings-form .form-submit {
     margin-top: 0;
+  }
+
+  .modal-backdrop {
+    padding: 0.5rem;
+  }
+
+  .preview-modal {
+    height: min(100%, 36rem);
   }
 }

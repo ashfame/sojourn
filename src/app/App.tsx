@@ -1,4 +1,5 @@
 import {
+  Archive as ArchiveIcon,
   BadgeCheck,
   Building2,
   CalendarDays,
@@ -6,13 +7,14 @@ import {
   ChevronUp,
   CircleAlert,
   Database,
-  Download,
   Edit3,
+  Eye,
   FileText,
   IdCard,
   Plane,
   Plus,
   Save,
+  Settings,
   Stamp,
   Target,
   Trash2,
@@ -20,7 +22,15 @@ import {
   Upload,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ComponentType
+} from "react";
 import { COUNTRY_NAMES, countryFlag, countryName } from "../domain/countries";
 import {
   formatDateRange,
@@ -249,13 +259,20 @@ type TimelineRenderItem =
   | { type: "year"; id: string; year: string }
   | { type: "stay"; id: string; stay: TimelineStay };
 
+type AppView = "timeline" | "targets" | "projection" | "data";
+
+interface EvidencePreview {
+  item: EvidenceItem;
+  url: string;
+  mimeType: string;
+}
+
 export function App() {
   const [data, setData] = useState<AppData | null>(null);
   const [metadata, setMetadata] = useState<StorageMetadata>({ backend: "indexeddb" });
   const [expandedStayIds, setExpandedStayIds] = useState<Set<string>>(new Set());
   const [showStayForm, setShowStayForm] = useState(false);
-  const [showTargetEditor, setShowTargetEditor] = useState(false);
-  const [showDataPanel, setShowDataPanel] = useState(false);
+  const [activeView, setActiveView] = useState<AppView>("timeline");
   const [editingStayId, setEditingStayId] = useState<string | null>(null);
   const [editingEvidenceId, setEditingEvidenceId] = useState<string | null>(null);
   const [proofStayId, setProofStayId] = useState<string | null>(null);
@@ -263,7 +280,17 @@ export function App() {
   const [plannedProjections, setPlannedProjections] = useState<ProjectionInput[]>([]);
   const [asOf, setAsOf] = useState(() => todayString());
   const [message, setMessage] = useState<string>("");
+  const [evidencePreview, setEvidencePreview] = useState<EvidencePreview | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  const closeEvidencePreview = useCallback((): void => {
+    setEvidencePreview((current) => {
+      if (current) {
+        URL.revokeObjectURL(current.url);
+      }
+      return null;
+    });
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -353,7 +380,18 @@ export function App() {
     }
     return computeRuleProgress(data, ruleAsOfDate(projectedStays, asOf), projectedStays);
   }, [asOf, data, projectedStays]);
-  const targetEditorOpen = data ? data.rules.length === 0 || showTargetEditor : showTargetEditor;
+  useEffect(() => {
+    if (!evidencePreview) {
+      return undefined;
+    }
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        closeEvidencePreview();
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [closeEvidencePreview, evidencePreview]);
 
   const saveData = async (next: AppData, savedMessage: string): Promise<void> => {
     const stamped = { ...next, updatedAt: new Date().toISOString() };
@@ -472,13 +510,17 @@ export function App() {
     ) {
       return;
     }
-    void saveData(
-      {
-        ...data,
-        stays: data.stays.filter((item) => item.id !== stay.id),
-        evidence: data.evidence.filter((item) => item.stayId !== stay.id)
-      },
-      "Stay deleted."
+    const linkedEvidence = data.evidence.filter((item) => item.stayId === stay.id);
+    void Promise.all(linkedEvidence.map((item) => storage.deleteEvidenceFile(item.blobKey))).then(
+      () =>
+        saveData(
+          {
+            ...data,
+            stays: data.stays.filter((item) => item.id !== stay.id),
+            evidence: data.evidence.filter((item) => item.stayId !== stay.id)
+          },
+          "Stay deleted."
+        )
     );
     setExpandedStayIds((current) => {
       const next = new Set(current);
@@ -511,11 +553,13 @@ export function App() {
       return;
     }
     const formData = new FormData(form);
-    const evidence = evidenceFromForm(formData, stayId);
-    void saveData({ ...data, evidence: [...data.evidence, evidence] }, "Evidence added.");
-    form.reset();
-    setProofStayId(null);
-    setExpandedStayIds((current) => new Set(current).add(stayId));
+    void evidenceFromForm(formData, stayId).then((evidence) =>
+      saveData({ ...data, evidence: [...data.evidence, evidence] }, "Evidence added.").then(() => {
+        form.reset();
+        setProofStayId(null);
+        setExpandedStayIds((current) => new Set(current).add(stayId));
+      })
+    );
   };
 
   const updateEvidence = (form: HTMLFormElement, item: EvidenceItem): void => {
@@ -523,52 +567,81 @@ export function App() {
       return;
     }
     const formData = new FormData(form);
-    const updated = evidenceFromForm(formData, item.stayId, item);
-    void saveData(
-      {
-        ...data,
-        evidence: data.evidence.map((evidence) => (evidence.id === item.id ? updated : evidence))
-      },
-      "Evidence updated."
+    void evidenceFromForm(formData, item.stayId, item).then((updated) =>
+      saveData(
+        {
+          ...data,
+          evidence: data.evidence.map((evidence) => (evidence.id === item.id ? updated : evidence))
+        },
+        "Evidence updated."
+      ).then(() => setEditingEvidenceId(null))
     );
-    setEditingEvidenceId(null);
   };
 
   const deleteEvidence = (item: EvidenceItem): void => {
     if (!data) {
       return;
     }
-    void saveData(
-      {
-        ...data,
-        evidence: data.evidence.filter((evidence) => evidence.id !== item.id)
-      },
-      "Evidence deleted."
+    void storage.deleteEvidenceFile(item.blobKey).then(() =>
+      saveData(
+        {
+          ...data,
+          evidence: data.evidence.filter((evidence) => evidence.id !== item.id)
+        },
+        "Evidence deleted."
+      ).then(() => setEditingEvidenceId(null))
     );
-    setEditingEvidenceId(null);
   };
 
-  const evidenceFromForm = (
+  const openEvidencePreview = (item: EvidenceItem): void => {
+    void storage
+      .getEvidenceFile(item)
+      .then((blob) => {
+        if (!blob) {
+          setMessage("No file is stored for that evidence item.");
+          return;
+        }
+        closeEvidencePreview();
+        setEvidencePreview({
+          item,
+          url: URL.createObjectURL(blob),
+          mimeType: blob.type || item.mimeType || "application/octet-stream"
+        });
+      })
+      .catch((error: unknown) => {
+        setMessage(error instanceof Error ? error.message : "Could not open evidence file.");
+      });
+  };
+
+  const evidenceFromForm = async (
     formData: FormData,
     stayId: string,
     existing?: EvidenceItem
-  ): EvidenceItem => {
+  ): Promise<EvidenceItem> => {
+    const id = existing?.id ?? createId("evidence");
     const file = formData.get("file");
     const evidenceDate = optionalString(formData.get("date"));
+    const hasFile = file instanceof File && file.name;
+    const blobKey = hasFile ? `evidence/${id}` : existing?.blobKey;
+    if (hasFile && blobKey) {
+      await storage.saveEvidenceFile(blobKey, file);
+    }
     const fileMeta =
-      file instanceof File && file.name
+      hasFile
         ? {
             fileName: file.name,
             ...(file.type ? { mimeType: file.type } : {}),
-            sizeBytes: file.size
+            sizeBytes: file.size,
+            ...(blobKey ? { blobKey } : {})
           }
         : {
             ...(existing?.fileName ? { fileName: existing.fileName } : {}),
             ...(existing?.mimeType ? { mimeType: existing.mimeType } : {}),
-            ...(existing?.sizeBytes !== undefined ? { sizeBytes: existing.sizeBytes } : {})
+            ...(existing?.sizeBytes !== undefined ? { sizeBytes: existing.sizeBytes } : {}),
+            ...(blobKey ? { blobKey } : {})
           };
     return {
-      id: existing?.id ?? createId("evidence"),
+      id,
       stayId,
       type: String(formData.get("type")) as EvidenceType,
       title: String(formData.get("title") || (file instanceof File ? file.name : "Evidence")),
@@ -610,7 +683,7 @@ export function App() {
         setEditingEvidenceId(null);
         setProofStayId(null);
         setShowStayForm(false);
-        setShowTargetEditor(false);
+        setActiveView("timeline");
       })
       .catch((error: unknown) => {
         setMessage(error instanceof Error ? `Import failed: ${error.message}` : "Import failed.");
@@ -645,7 +718,7 @@ export function App() {
       ? data.rules.map((rule) => (rule.id === ruleId ? nextRule : rule))
       : [...data.rules, nextRule];
     void saveData({ ...data, rules }, ruleId ? "Target updated." : "Target added.");
-    setShowTargetEditor(true);
+    setActiveView("targets");
     form.reset();
   };
 
@@ -672,7 +745,7 @@ export function App() {
       return;
     }
     void saveData({ ...data, rules: [...data.rules, rule] }, "Suggested target added.");
-    setShowTargetEditor(true);
+    setActiveView("targets");
   };
 
   if (!data) {
@@ -690,13 +763,52 @@ export function App() {
       <header className="app-header">
         <div>
           <p className="eyebrow">Sojourn</p>
-          <h1>Timeline</h1>
+          <h1>{activeView === "timeline" ? "Timeline" : activeView === "targets" ? "Targets" : activeView === "projection" ? "Projection" : "Data"}</h1>
           <p>{timelineSummary(timeline)}</p>
         </div>
-        <button type="button" onClick={() => setShowStayForm((value) => !value)}>
-          {showStayForm ? <X size={17} /> : <Plus size={17} />}
-          {showStayForm ? "Close" : "Add stay"}
-        </button>
+        <div className="header-actions">
+          <button type="button" onClick={() => {
+            setActiveView("timeline");
+            setShowStayForm((value) => !value);
+          }}>
+            {showStayForm ? <X size={17} /> : <Plus size={17} />}
+            {showStayForm ? "Close" : "Add stay"}
+          </button>
+          <div className="view-switcher" aria-label="App sections">
+            <button
+              type="button"
+              className={activeView === "timeline" ? "secondary active" : "secondary"}
+              aria-pressed={activeView === "timeline"}
+              onClick={() => setActiveView("timeline")}
+            >
+              <CalendarDays size={16} /> Timeline
+            </button>
+            <button
+              type="button"
+              className={activeView === "targets" ? "secondary active" : "secondary"}
+              aria-pressed={activeView === "targets"}
+              onClick={() => setActiveView("targets")}
+            >
+              <Target size={16} /> Targets
+            </button>
+            <button
+              type="button"
+              className={activeView === "projection" ? "secondary active" : "secondary"}
+              aria-pressed={activeView === "projection"}
+              onClick={() => setActiveView("projection")}
+            >
+              <Plane size={16} /> Plan
+            </button>
+            <button
+              type="button"
+              className={activeView === "data" ? "secondary active" : "secondary"}
+              aria-pressed={activeView === "data"}
+              onClick={() => setActiveView("data")}
+            >
+              <Settings size={16} /> Data
+            </button>
+          </div>
+        </div>
       </header>
       <CountryOptionsDatalist />
 
@@ -706,16 +818,19 @@ export function App() {
         </div>
       )}
 
-      {data.rules.length === 0 && (
+      {activeView === "timeline" && data.rules.length === 0 && (
         <section className="panel setup-panel">
           <h2>
             <Target size={18} /> Set up targets
           </h2>
           <p>Add at least one target to calculate day-count pressure. You can still add stays now.</p>
+          <button type="button" className="secondary" onClick={() => setActiveView("targets")}>
+            <Target size={16} /> Open targets
+          </button>
         </section>
       )}
 
-      {progress.length > 0 && (
+      {activeView === "timeline" && progress.length > 0 && (
         <section className="target-strip" aria-label="Residency targets">
           {progress.map((item) => (
             <TargetCard key={item.rule.id} progress={item} />
@@ -723,28 +838,25 @@ export function App() {
         </section>
       )}
 
-      {data.rules.length > 0 && (
-        <div className="target-actions">
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => setShowTargetEditor((value) => !value)}
-          >
-            <Target size={16} /> {showTargetEditor ? "Hide targets" : "Configure targets"}
-          </button>
-        </div>
+      {activeView === "targets" && (
+        <>
+          {progress.length > 0 && (
+            <section className="target-strip" aria-label="Residency targets">
+              {progress.map((item) => (
+                <TargetCard key={item.rule.id} progress={item} />
+              ))}
+            </section>
+          )}
+          <TargetEditor
+            rules={data.rules}
+            onSaveRule={upsertRule}
+            onDeleteRule={deleteRule}
+            onAddSuggestion={addSuggestedRule}
+          />
+        </>
       )}
 
-      {targetEditorOpen && (
-        <TargetEditor
-          rules={data.rules}
-          onSaveRule={upsertRule}
-          onDeleteRule={deleteRule}
-          onAddSuggestion={addSuggestedRule}
-        />
-      )}
-
-      {showStayForm && (
+      {activeView === "timeline" && showStayForm && (
         <section className="panel">
           <h2>
             <Plus size={18} /> Add stay
@@ -782,53 +894,56 @@ export function App() {
         </section>
       )}
 
-      <section className="timeline-section" aria-label="Stay timeline">
-        <div className="timeline-line" aria-hidden="true" />
-        {timeline.length === 0 && (
-          <article className="timeline-empty">
-            <CalendarDays size={18} />
-            <span>No stays entered yet.</span>
-          </article>
-        )}
-        {timelineItems.map((item) =>
-          item.type === "year" ? (
-            <TimelineYearMarker key={item.id} year={item.year} />
-          ) : (
-            <StayRow
-              key={item.id}
-              stay={item.stay}
-              expanded={expandedStayIds.has(item.stay.id)}
-              onToggle={() => toggleStay(item.stay.id)}
-              addingProof={proofStayId === item.stay.id}
-              editing={editingStayId === item.stay.id}
-              editingEvidenceId={editingEvidenceId}
-              onStartEdit={() => {
-                setEditingStayId(item.stay.id);
-                setProofStayId(null);
-              }}
-              onCancelEdit={() => setEditingStayId(null)}
-              onSaveEdit={(form) => updateStay(form, item.stay.id)}
-              onDelete={() => deleteStay(item.stay)}
-              onEndToday={() => endStayToday(item.stay)}
-              onAddProof={() => {
-                setProofStayId(item.stay.id);
-                setEditingEvidenceId(null);
-              }}
-              onCancelProof={() => setProofStayId(null)}
-              onSaveProof={(form) => addEvidence(form, item.stay.id)}
-              onStartEditEvidence={(evidence) => {
-                setEditingEvidenceId(evidence.id);
-                setProofStayId(null);
-              }}
-              onCancelEditEvidence={() => setEditingEvidenceId(null)}
-              onSaveEvidenceEdit={updateEvidence}
-              onDeleteEvidence={deleteEvidence}
-            />
-          )
-        )}
-      </section>
+      {activeView === "timeline" && (
+        <section className="timeline-section" aria-label="Stay timeline">
+          <div className="timeline-line" aria-hidden="true" />
+          {timeline.length === 0 && (
+            <article className="timeline-empty">
+              <CalendarDays size={18} />
+              <span>No stays entered yet.</span>
+            </article>
+          )}
+          {timelineItems.map((item) =>
+            item.type === "year" ? (
+              <TimelineYearMarker key={item.id} year={item.year} />
+            ) : (
+              <StayRow
+                key={item.id}
+                stay={item.stay}
+                expanded={expandedStayIds.has(item.stay.id)}
+                onToggle={() => toggleStay(item.stay.id)}
+                addingProof={proofStayId === item.stay.id}
+                editing={editingStayId === item.stay.id}
+                editingEvidenceId={editingEvidenceId}
+                onStartEdit={() => {
+                  setEditingStayId(item.stay.id);
+                  setProofStayId(null);
+                }}
+                onCancelEdit={() => setEditingStayId(null)}
+                onSaveEdit={(form) => updateStay(form, item.stay.id)}
+                onDelete={() => deleteStay(item.stay)}
+                onEndToday={() => endStayToday(item.stay)}
+                onAddProof={() => {
+                  setProofStayId(item.stay.id);
+                  setEditingEvidenceId(null);
+                }}
+                onCancelProof={() => setProofStayId(null)}
+                onSaveProof={(form) => addEvidence(form, item.stay.id)}
+                onStartEditEvidence={(evidence) => {
+                  setEditingEvidenceId(evidence.id);
+                  setProofStayId(null);
+                }}
+                onCancelEditEvidence={() => setEditingEvidenceId(null)}
+                onSaveEvidenceEdit={updateEvidence}
+                onDeleteEvidence={deleteEvidence}
+                onViewEvidence={openEvidencePreview}
+              />
+            )
+          )}
+        </section>
+      )}
 
-      {data.rules.length > 0 && (
+      {activeView === "projection" && (
         <ProjectionPanel
           projection={projection}
           setProjection={setProjection}
@@ -839,17 +954,7 @@ export function App() {
         />
       )}
 
-      <div className="target-actions">
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => setShowDataPanel((value) => !value)}
-        >
-          <Database size={16} /> {showDataPanel ? "Hide data" : "Data & profile"}
-        </button>
-      </div>
-
-      {showDataPanel && (
+      {activeView === "data" && (
         <section className="panel settings-panel">
           <h2>
             <Database size={18} /> Data & profile
@@ -889,14 +994,14 @@ export function App() {
                 className="secondary"
                 onClick={() => importInputRef.current?.click()}
               >
-                <Upload size={16} /> Import JSON
+                <Upload size={16} /> Import
               </button>
               <input
                 ref={importInputRef}
-                aria-label="Import JSON"
+                aria-label="Import data"
                 className="file-input"
                 type="file"
-                accept="application/json,.json"
+                accept="application/json,application/x-tar,.json,.tar"
                 onChange={(event) => {
                   importSnapshot(event.currentTarget.files?.[0]);
                   event.currentTarget.value = "";
@@ -908,14 +1013,17 @@ export function App() {
                 onClick={() => {
                   void storage
                     .exportData(data)
-                    .then((blob) => downloadBlob(blob, "sojourn-data.json"));
+                    .then((blob) => downloadBlob(blob, "sojourn-export.tar"));
                 }}
               >
-                <Download size={16} /> Export data
+                <ArchiveIcon size={16} /> Export archive
               </button>
             </div>
           </div>
         </section>
+      )}
+      {evidencePreview && (
+        <EvidencePreviewModal preview={evidencePreview} onClose={closeEvidencePreview} />
       )}
     </main>
   );
@@ -1000,6 +1108,53 @@ function TimelineYearMarker({ year }: { year: string }) {
   );
 }
 
+function EvidencePreviewModal({
+  preview,
+  onClose
+}: {
+  preview: EvidencePreview;
+  onClose: () => void;
+}) {
+  const isPdf =
+    preview.mimeType === "application/pdf" || preview.item.fileName?.toLowerCase().endsWith(".pdf");
+  const isImage =
+    preview.mimeType.startsWith("image/") ||
+    /\.(png|jpe?g|gif|webp)$/iu.test(preview.item.fileName ?? "");
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section
+        className="preview-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="evidence-preview-title"
+      >
+        <div className="preview-modal-header">
+          <span>
+            <strong id="evidence-preview-title">{preview.item.title}</strong>
+            <small>{preview.item.fileName ?? evidenceLabel[preview.item.type]}</small>
+          </span>
+          <button type="button" className="icon-button secondary" aria-label="Close preview" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="preview-modal-body">
+          {isPdf && <iframe title={preview.item.title} src={preview.url} />}
+          {isImage && !isPdf && <img src={preview.url} alt={preview.item.title} />}
+          {!isPdf && !isImage && (
+            <div className="preview-fallback">
+              <FileText size={24} />
+              <span>This file type cannot be previewed inline.</span>
+              <a href={preview.url} download={preview.item.fileName ?? preview.item.title}>
+                Download file
+              </a>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function StayRow({
   stay,
   expanded,
@@ -1018,7 +1173,8 @@ function StayRow({
   onStartEditEvidence,
   onCancelEditEvidence,
   onSaveEvidenceEdit,
-  onDeleteEvidence
+  onDeleteEvidence,
+  onViewEvidence
 }: {
   stay: TimelineStay;
   expanded: boolean;
@@ -1038,6 +1194,7 @@ function StayRow({
   onCancelEditEvidence: () => void;
   onSaveEvidenceEdit: (form: HTMLFormElement, item: EvidenceItem) => void;
   onDeleteEvidence: (item: EvidenceItem) => void;
+  onViewEvidence: (item: EvidenceItem) => void;
 }) {
   const isUnaccounted = stay.source === "unaccounted";
   const isActive = isActiveTimelineStay(stay);
@@ -1110,6 +1267,7 @@ function StayRow({
                   <EvidenceRow
                     key={item.id}
                     item={item}
+                    onView={() => onViewEvidence(item)}
                     onEdit={() => onStartEditEvidence(item)}
                     onDelete={() => onDeleteEvidence(item)}
                   />
@@ -1344,10 +1502,12 @@ function RuleForm({
 
 function EvidenceRow({
   item,
+  onView,
   onEdit,
   onDelete
 }: {
   item: EvidenceItem;
+  onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -1364,6 +1524,11 @@ function EvidenceRow({
         </small>
       </span>
       <div className="evidence-actions">
+        {item.blobKey && (
+          <button type="button" className="icon-button secondary" aria-label={`View ${item.title}`} onClick={onView}>
+            <Eye size={14} />
+          </button>
+        )}
         <button type="button" className="icon-button secondary" aria-label={`Edit ${item.title}`} onClick={onEdit}>
           <Edit3 size={14} />
         </button>

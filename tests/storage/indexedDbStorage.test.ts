@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
 import { createInitialData, defaultRules, migrateAppData } from "../../src/domain/seed";
+import { blobToArrayBuffer } from "../../src/storage/archive";
 import { STORAGE_BACKUP_KEY, createIndexedDbStorage } from "../../src/storage/indexedDbStorage";
 
 describe("indexedDbStorage", () => {
@@ -95,6 +96,51 @@ describe("indexedDbStorage", () => {
     } as Blob);
 
     expect(imported.stays.map((stay) => stay.id)).toEqual(["stay_imported"]);
+  });
+
+  it("exports and imports evidence files through an archive", async () => {
+    const storage = createIndexedDbStorage();
+    const data = {
+      ...createInitialData(),
+      stays: [
+        {
+          id: "stay_archive",
+          country: "AE",
+          entryDate: "2026-06-01",
+          exitDate: "2026-06-05",
+          label: "Archive stay",
+          createdAt: "2026-06-01T00:00:00.000Z",
+          updatedAt: "2026-06-01T00:00:00.000Z"
+        }
+      ],
+      evidence: [
+        {
+          id: "evidence_pdf",
+          stayId: "stay_archive",
+          type: "boarding_pass" as const,
+          title: "DXB boarding pass",
+          fileName: "scan.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 8,
+          blobKey: "evidence/evidence_pdf",
+          createdAt: "2026-06-01T00:00:00.000Z"
+        }
+      ]
+    };
+
+    await storage.saveEvidenceFile(
+      "evidence/evidence_pdf",
+      new Blob(["pdf-data"], { type: "application/pdf" })
+    );
+    const archive = await storage.exportData(data);
+    const imported = await storage.importData(archive);
+    const importedEvidence = imported.evidence[0]!;
+    const importedFile = await storage.getEvidenceFile(importedEvidence);
+
+    expect(archive.type).toBe("application/x-tar");
+    expect(importedEvidence.fileName).toMatch(/^boarding_pass_dxb-boarding-pass_evidence-pdf\.pdf$/);
+    expect(importedEvidence.blobKey).toBe("evidence/evidence_pdf");
+    expect(new TextDecoder().decode(await blobToArrayBuffer(importedFile!))).toBe("pdf-data");
   });
 
   it("removes old starter targets during migration", () => {

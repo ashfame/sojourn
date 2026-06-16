@@ -6,8 +6,9 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.getByText("Sojourn")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Set up targets" })).toBeVisible();
   await expect(page.getByText("No stays entered yet.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Export data/ })).not.toBeVisible();
+  await expect(page.getByRole("button", { name: /Export archive/ })).not.toBeVisible();
 
+  await page.getByRole("button", { name: "Targets" }).click();
   await page.getByRole("button", { name: "India: under 60" }).click();
   await expect(page.getByText("Suggested target added.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "India under 60" })).toBeVisible();
@@ -31,12 +32,14 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.getByText("12 of 59 days used")).toBeVisible();
   await expect(page.getByText("11 days unaccounted for")).toBeVisible();
 
+  await page.getByRole("button", { name: "Targets" }).click();
   const indiaTarget = page.locator("form.rule-form").filter({ hasText: "India under 60" });
   await indiaTarget.getByLabel("Max or target days").fill("58");
   await indiaTarget.getByRole("button", { name: /Save target/ }).click();
   await expect(page.getByText("Target updated.")).toBeVisible();
   await expect(page.getByText("12 of 58 days used")).toBeVisible();
 
+  await page.getByRole("button", { name: "Plan" }).click();
   const projectionForm = page.locator("form.projection-grid");
   await projectionForm.getByLabel("Country").fill("IN");
   await projectionForm.getByLabel("Entry").fill("2026-08-01");
@@ -51,6 +54,7 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.locator(".planned-trip-row")).toHaveCount(2);
   await expect(page.getByText("24 of 58 days used")).toBeVisible();
 
+  await page.getByRole("button", { name: "Targets" }).click();
   await page.getByRole("button", { name: "India: under 120" }).click();
   await expect(page.getByText("Suggested target added.")).toBeVisible();
   const indiaUnder120 = page.locator("form.rule-form").filter({ hasText: "India under 120" });
@@ -58,11 +62,17 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.getByText("Target deleted.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "India under 120" })).not.toBeVisible();
 
+  await page.getByRole("button", { name: "Timeline" }).click();
   await page.getByRole("button", { name: /Family visit/ }).click();
   await page.getByRole("button", { name: /Add evidence/ }).click();
   await page.getByLabel("Title").fill("Entry stamp");
+  await page.getByLabel("File").setInputFiles("tests/fixtures/entry-stamp.pdf");
   await page.getByRole("button", { name: /Add proof/ }).click();
   await expect(page.getByText("Evidence added.")).toBeVisible();
+  await page.getByRole("button", { name: /View Entry stamp/ }).click();
+  await expect(page.getByRole("dialog", { name: "Entry stamp" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Entry stamp" })).not.toBeVisible();
   await page.getByRole("button", { name: /Edit Entry stamp/ }).click();
   await page.getByLabel("Title").fill("Updated entry stamp");
   await page.getByRole("button", { name: /Save proof/ }).click();
@@ -82,8 +92,8 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.getByText("Stay deleted.")).toBeVisible();
   await expect(page.getByText(/Follow-up/)).not.toBeVisible();
 
-  await page.getByRole("button", { name: /Data & profile/ }).click();
-  await expect(page.getByRole("button", { name: /Export data/ })).toBeVisible();
+  await page.getByRole("button", { name: "Data" }).click();
+  await expect(page.getByRole("button", { name: /Export archive/ })).toBeVisible();
 });
 
 test("imports a JSON snapshot into an empty app", async ({ page }) => {
@@ -133,8 +143,8 @@ test("imports a JSON snapshot into an empty app", async ({ page }) => {
     updatedAt: "2026-06-01T00:00:00.000Z"
   });
 
-  await page.getByRole("button", { name: /Data & profile/ }).click();
-  await page.getByLabel("Import JSON").evaluate((node, content) => {
+  await page.getByRole("button", { name: "Data" }).click();
+  await page.getByLabel("Import data").evaluate((node, content) => {
     const input = node as HTMLInputElement;
     const dataTransfer = new DataTransfer();
     dataTransfer.items.add(
