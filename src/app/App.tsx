@@ -1006,8 +1006,8 @@ export function App() {
           </form>
           <div className="storage-row">
             <span>
-              Saved in {metadata.backend} · revision {metadata.revision ?? 1} ·{" "}
-              built from: {__SOJOURN_BUILD_COMMIT__} · {formatSavedAt(metadata.savedAt)}
+              Built from: {__SOJOURN_BUILD_COMMIT__} · Saved in {metadata.backend} · revision {metadata.revision ?? 1} ·{" "}
+               {formatSavedAt(metadata.savedAt)}
             </span>
             <div className="storage-actions">
               <button
