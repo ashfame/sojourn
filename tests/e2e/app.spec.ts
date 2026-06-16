@@ -71,3 +71,58 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await page.getByRole("button", { name: /Data & profile/ }).click();
   await expect(page.getByRole("button", { name: /Export data/ })).toBeVisible();
 });
+
+test("imports a JSON snapshot into an empty app", async ({ page }) => {
+  await page.goto("/");
+
+  const snapshot = JSON.stringify({
+    schemaVersion: 1,
+    settings: {
+      homeBaseCountry: "AE",
+      nationality: "IN",
+      legalResidence: "AE",
+      countEntryExitDays: true
+    },
+    stays: [
+      {
+        id: "stay_imported_uae",
+        country: "AE",
+        entryDate: "2026-06-01",
+        exitDate: "2026-06-05",
+        label: "Dubai import",
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z"
+      }
+    ],
+    evidence: [],
+    rules: [
+      {
+        id: "rule_imported_uae",
+        label: "Imported UAE target",
+        countryScope: ["AE"],
+        threshold: 183,
+        direction: "minimum",
+        window: { type: "calendar_year" },
+        counting: "presence_any_part",
+        description: "Imported calendar year target"
+      }
+    ],
+    updatedAt: "2026-06-01T00:00:00.000Z"
+  });
+
+  await page.getByRole("button", { name: /Data & profile/ }).click();
+  await page.getByLabel("Import JSON").evaluate((node, content) => {
+    const input = node as HTMLInputElement;
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(
+      new File([content], "sojourn-data.json", { type: "application/json" })
+    );
+    input.files = dataTransfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, snapshot);
+
+  await expect(page.getByText("Data imported.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Imported UAE target" })).toBeVisible();
+  await expect(page.getByText("Dubai import")).toBeVisible();
+  await expect(page.getByText("5 of 183 days")).toBeVisible();
+});

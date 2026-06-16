@@ -665,6 +665,17 @@ label {
   font-size: 0.82rem;
 }
 
+.storage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.file-input {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     padding: 0.85rem;
@@ -713,5 +724,10 @@ label {
 
   .storage-row {
     display: grid;
+  }
+
+  .storage-actions,
+  .storage-actions button {
+    width: 100%;
   }
 }

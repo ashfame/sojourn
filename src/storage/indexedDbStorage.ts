@@ -126,6 +126,6 @@ export const createIndexedDbStorage = (): StorageDriver => ({
 
   async importData(blob: Blob): Promise<AppData> {
     const text = await blob.text();
-    return JSON.parse(text) as AppData;
+    return migrateAppData(JSON.parse(text) as AppData);
   }
 });

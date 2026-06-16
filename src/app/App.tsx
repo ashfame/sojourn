@@ -20,7 +20,7 @@ import {
   Upload,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ChangeEvent, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType } from "react";
 import { COUNTRY_NAMES, countryFlag, countryName } from "../domain/countries";
 import {
   formatDateRange,
@@ -258,6 +258,7 @@ export function App() {
   const [projection, setProjection] = useState<ProjectionInput>(defaultProjection);
   const [asOf, setAsOf] = useState(() => todayString());
   const [message, setMessage] = useState<string>("");
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -555,6 +556,26 @@ export function App() {
     );
   };
 
+  const importSnapshot = (file: File | undefined): void => {
+    if (!file) {
+      return;
+    }
+    void storage
+      .importData(file)
+      .then((imported) => saveData(imported, "Data imported."))
+      .then(() => {
+        setExpandedStayIds(new Set());
+        setEditingStayId(null);
+        setEditingEvidenceId(null);
+        setProofStayId(null);
+        setShowStayForm(false);
+        setShowTargetEditor(false);
+      })
+      .catch((error: unknown) => {
+        setMessage(error instanceof Error ? `Import failed: ${error.message}` : "Import failed.");
+      });
+  };
+
   const upsertRule = (form: HTMLFormElement, ruleId?: string): void => {
     if (!data) {
       return;
@@ -814,17 +835,37 @@ export function App() {
               Saved in {metadata.backend} · revision {metadata.revision ?? 1} ·{" "}
               {formatSavedAt(metadata.savedAt)}
             </span>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => {
-                void storage
-                  .exportData(data)
-                  .then((blob) => downloadBlob(blob, "sojourn-data.json"));
-              }}
-            >
-              <Download size={16} /> Export data
-            </button>
+            <div className="storage-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => importInputRef.current?.click()}
+              >
+                <Upload size={16} /> Import JSON
+              </button>
+              <input
+                ref={importInputRef}
+                aria-label="Import JSON"
+                className="file-input"
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => {
+                  importSnapshot(event.currentTarget.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+              />
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  void storage
+                    .exportData(data)
+                    .then((blob) => downloadBlob(blob, "sojourn-data.json"));
+                }}
+              >
+                <Download size={16} /> Export data
+              </button>
+            </div>
           </div>
         </section>
       )}

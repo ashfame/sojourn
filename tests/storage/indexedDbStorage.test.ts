@@ -73,6 +73,30 @@ describe("indexedDbStorage", () => {
     expect(reloaded.metadata.revision).toBe(999);
   });
 
+  it("imports a JSON snapshot through the storage driver", async () => {
+    const storage = createIndexedDbStorage();
+    const data = {
+      ...createInitialData(),
+      stays: [
+        {
+          id: "stay_imported",
+          country: "AE",
+          entryDate: "2026-06-01",
+          exitDate: "2026-06-05",
+          label: "Imported stay",
+          createdAt: "2026-06-01T00:00:00.000Z",
+          updatedAt: "2026-06-01T00:00:00.000Z"
+        }
+      ]
+    };
+
+    const imported = await storage.importData({
+      text: () => Promise.resolve(JSON.stringify(data))
+    } as Blob);
+
+    expect(imported.stays.map((stay) => stay.id)).toEqual(["stay_imported"]);
+  });
+
   it("removes old starter targets during migration", () => {
     const data = createInitialData();
     const oldData = {
