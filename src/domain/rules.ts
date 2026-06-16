@@ -27,7 +27,12 @@ import type {
 const sortedStaysAsc = (stays: Stay[]): Stay[] =>
   [...stays].sort((left, right) => compareDate(left.entryDate, right.entryDate));
 
-const endDateFor = (stay: Stay, asOf: string): string => stay.exitDate ?? asOf;
+const endDateFor = (stay: Stay, asOf: string): string => {
+  if (stay.exitDate) {
+    return stay.exitDate;
+  }
+  return isAfter(stay.entryDate, asOf) ? stay.entryDate : asOf;
+};
 
 export const createTimeline = (
   data: AppData,
@@ -84,23 +89,23 @@ export const createTimeline = (
     });
   };
 
+  const timelineEnd = stays.reduce(
+    (latest, stay) => maxDate(latest, endDateFor(stay, asOf)),
+    asOf
+  );
+
   for (const stay of stays) {
-    if (isAfter(stay.entryDate, asOf)) {
-      continue;
-    }
-    const stayEnd = minDate(endDateFor(stay, asOf), asOf);
+    const stayEnd = endDateFor(stay, asOf);
     if (cursor && isBefore(cursor, stay.entryDate)) {
       const gapEnd = addDays(stay.entryDate, -1);
       pushUnaccounted(cursor, gapEnd);
     }
     const durationStart = cursor ? maxDate(stay.entryDate, cursor) : stay.entryDate;
-    const actualStayEnd = endDateFor(stay, asOf);
-    const countExitDate = stay.projected ? actualStayEnd : stayEnd;
     pushStay(
       { ...stay, exitDate: stayEnd },
       "explicit",
       stay.entryDate,
-      countExitDate,
+      stayEnd,
       isAfter(durationStart, stayEnd) ? stay.entryDate : durationStart,
       stayEnd,
       stay.exitDate
@@ -108,8 +113,8 @@ export const createTimeline = (
     cursor = addDays(cursor ? maxDate(cursor, stayEnd) : stayEnd, 1);
   }
 
-  if (cursor && !isAfter(cursor, asOf)) {
-    pushUnaccounted(cursor, asOf);
+  if (cursor && !isAfter(cursor, timelineEnd)) {
+    pushUnaccounted(cursor, timelineEnd);
   }
 
   return timeline.sort((left, right) => compareDate(right.entryDate, left.entryDate));
@@ -204,7 +209,7 @@ const progressText = (rule: Rule, usedDays: number): { status: string; detail: s
   const remaining = Math.max(0, rule.threshold - usedDays);
   if (rule.direction === "minimum") {
     return {
-      status: remaining === 0 ? "safe" : `${remaining} to go`,
+      status: remaining === 0 ? "safe" : `${remaining} days to go`,
       detail: `${usedDays} of ${rule.threshold} days`
     };
   }

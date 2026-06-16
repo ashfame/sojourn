@@ -239,9 +239,20 @@ label {
 
 .target-card small,
 .projection-result small,
+.planned-trip-row small,
 .evidence-row small {
   color: #77746b;
   font-size: 0.76rem;
+}
+
+.target-meta span {
+  min-width: 0;
+}
+
+.target-meta strong {
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .rule-badge {
@@ -316,6 +327,11 @@ label {
 
 .form-submit {
   align-self: end;
+}
+
+.settings-form .form-submit {
+  align-self: start;
+  margin-top: 1.32rem;
 }
 
 .timeline-section {
@@ -550,10 +566,50 @@ label {
   margin-top: 0.2rem;
 }
 
+.projection-grid {
+  grid-template-columns:
+    minmax(4.8rem, 0.7fr) minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(10rem, 1.3fr)
+    auto;
+}
+
+.projection-add-button {
+  align-self: end;
+}
+
+.planned-trip-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.planned-trip-row {
+  border: 1px solid #ece7dc;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.55rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.planned-trip-row span:not(.country-avatar) {
+  min-width: 0;
+  display: grid;
+  gap: 0.08rem;
+}
+
+.planned-trip-row strong {
+  overflow-wrap: anywhere;
+}
+
 .projection-results {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.6rem;
+}
+
+.projection-results .empty-copy {
+  grid-column: 1 / -1;
 }
 
 .projection-result {
@@ -729,5 +785,13 @@ label {
   .storage-actions,
   .storage-actions button {
     width: 100%;
+  }
+
+  .projection-add-button {
+    width: 100%;
+  }
+
+  .settings-form .form-submit {
+    margin-top: 0;
   }
 }

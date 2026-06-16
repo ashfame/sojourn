@@ -37,6 +37,20 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.getByText("Target updated.")).toBeVisible();
   await expect(page.getByText("12 of 58 days used")).toBeVisible();
 
+  const projectionForm = page.locator("form.projection-grid");
+  await projectionForm.getByLabel("Country").fill("IN");
+  await projectionForm.getByLabel("Entry").fill("2026-08-01");
+  await projectionForm.getByLabel("Exit").fill("2026-08-10");
+  await projectionForm.getByLabel("Label").fill("August India plan");
+  await projectionForm.getByRole("button", { name: /Add trip/ }).click();
+  await projectionForm.getByLabel("Country").fill("IN");
+  await projectionForm.getByLabel("Entry").fill("2026-08-20");
+  await projectionForm.getByLabel("Exit").fill("2026-08-21");
+  await projectionForm.getByLabel("Label").fill("Follow-up plan");
+  await projectionForm.getByRole("button", { name: /Add trip/ }).click();
+  await expect(page.locator(".planned-trip-row")).toHaveCount(2);
+  await expect(page.getByText("24 of 58 days used")).toBeVisible();
+
   await page.getByRole("button", { name: "India: under 120" }).click();
   await expect(page.getByText("Suggested target added.")).toBeVisible();
   const indiaUnder120 = page.locator("form.rule-form").filter({ hasText: "India under 120" });
@@ -125,4 +139,5 @@ test("imports a JSON snapshot into an empty app", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Imported UAE target" })).toBeVisible();
   await expect(page.getByText("Dubai import")).toBeVisible();
   await expect(page.getByText("5 of 183 days")).toBeVisible();
+  await expect(page.getByText("178 days to go")).toBeVisible();
 });

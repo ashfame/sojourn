@@ -164,7 +164,7 @@ describe("rule engine", () => {
     expect(timeline[0]?.knownExitDate).toBeUndefined();
   });
 
-  it("counts stored stays only through as-of even when a future exit is known", () => {
+  it("counts stored dated stays through a known future exit", () => {
     const data = {
       ...createInitialData(),
       rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] })),
@@ -184,12 +184,42 @@ describe("rule engine", () => {
     const uae = progressByRule(data, "2026-06-15").get("rule_uae_183");
     const timeline = createTimeline(data, "2026-06-15");
 
-    expect(uae?.usedDays).toBe(166);
+    expect(uae?.usedDays).toBe(365);
     expect(timeline[0]).toMatchObject({
       id: "stay_uae_known_future_exit",
-      exitDate: "2026-06-15",
+      exitDate: "2026-12-31",
       knownExitDate: "2026-12-31",
-      durationDays: 183
+      durationDays: 382
+    });
+  });
+
+  it("counts future planned stays in the current target window", () => {
+    const data = {
+      ...createInitialData(),
+      rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] })),
+      stays: [
+        {
+          id: "stay_uae_future",
+          country: "AE",
+          entryDate: "2026-08-01",
+          exitDate: "2026-08-10",
+          label: "Planned Dubai stay",
+          createdAt: "2026-06-15T00:00:00.000Z",
+          updatedAt: "2026-06-15T00:00:00.000Z"
+        }
+      ]
+    };
+
+    const uae = progressByRule(data, "2026-06-15").get("rule_uae_183");
+    const timeline = createTimeline(data, "2026-06-15");
+
+    expect(uae?.usedDays).toBe(10);
+    expect(uae?.statusText).toBe("173 days to go");
+    expect(timeline[0]).toMatchObject({
+      id: "stay_uae_future",
+      entryDate: "2026-08-01",
+      exitDate: "2026-08-10",
+      durationDays: 10
     });
   });
 

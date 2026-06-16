@@ -256,6 +256,7 @@ export function App() {
   const [editingEvidenceId, setEditingEvidenceId] = useState<string | null>(null);
   const [proofStayId, setProofStayId] = useState<string | null>(null);
   const [projection, setProjection] = useState<ProjectionInput>(defaultProjection);
+  const [plannedProjections, setPlannedProjections] = useState<ProjectionInput[]>([]);
   const [asOf, setAsOf] = useState(() => todayString());
   const [message, setMessage] = useState<string>("");
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -321,25 +322,20 @@ export function App() {
 
   const timeline = useMemo(() => (data ? createTimeline(data, asOf) : []), [asOf, data]);
   const progress = useMemo(() => (data ? computeRuleProgress(data, asOf) : []), [asOf, data]);
-  const projectedStay = useMemo(() => {
-    try {
-      if (!projection.country || !projection.entryDate || !projection.exitDate) {
-        return undefined;
-      }
-      if (isBefore(projection.exitDate, projection.entryDate)) {
-        return undefined;
-      }
-      return projectionStay(projection);
-    } catch {
-      return undefined;
-    }
-  }, [projection]);
+  const projectedStays = useMemo(
+    () =>
+      plannedProjections.map((item, index) => ({
+        ...projectionStay(item),
+        id: `projection_${index}_${item.country}_${item.entryDate}_${item.exitDate}`
+      })),
+    [plannedProjections]
+  );
   const projectionProgress = useMemo(() => {
-    if (!data || !projectedStay) {
+    if (!data || projectedStays.length === 0) {
       return [];
     }
-    return computeRuleProgress(data, ruleAsOfDate([projectedStay], asOf), [projectedStay]);
-  }, [asOf, data, projectedStay]);
+    return computeRuleProgress(data, ruleAsOfDate(projectedStays, asOf), projectedStays);
+  }, [asOf, data, projectedStays]);
   const targetEditorOpen = data ? data.rules.length === 0 || showTargetEditor : showTargetEditor;
 
   const saveData = async (next: AppData, savedMessage: string): Promise<void> => {
@@ -387,6 +383,34 @@ export function App() {
     void saveData({ ...data, stays: [...data.stays, stay] }, "Stay added.");
     form.reset();
     setShowStayForm(false);
+  };
+
+  const addPlannedProjection = (input: ProjectionInput): void => {
+    const country = normalizeCountryCode(input.country);
+    const label = input.label.trim();
+    if (!country || !input.entryDate || !input.exitDate) {
+      setMessage("Add country, entry, and exit dates for the planned trip.");
+      return;
+    }
+    if (isBefore(input.exitDate, input.entryDate)) {
+      setMessage("Planned trip exit cannot be before entry.");
+      return;
+    }
+    setPlannedProjections((current) => [
+      ...current,
+      {
+        country,
+        entryDate: input.entryDate,
+        exitDate: input.exitDate,
+        label
+      }
+    ]);
+    setProjection(defaultProjection);
+    setMessage("Planned trip added.");
+  };
+
+  const removePlannedProjection = (index: number): void => {
+    setPlannedProjections((current) => current.filter((_, itemIndex) => itemIndex !== index));
   };
 
   const updateStay = (form: HTMLFormElement, stayId: string): void => {
@@ -727,7 +751,7 @@ export function App() {
               Exit
               <input name="exitDate" type="date" />
               <span className="field-help">
-                Leave blank for your current stay. It counts through today and updates daily.
+                Leave blank for your current stay. Future planned stays should include an exit date.
               </span>
             </label>
             <label>
@@ -787,6 +811,9 @@ export function App() {
         <ProjectionPanel
           projection={projection}
           setProjection={setProjection}
+          plannedProjections={plannedProjections}
+          onAddProjection={addPlannedProjection}
+          onRemoveProjection={removePlannedProjection}
           progress={projectionProgress}
         />
       )}
@@ -826,7 +853,7 @@ export function App() {
               />
               <span className="field-help">Profile metadata for suggestions, not day counting.</span>
             </label>
-            <button type="submit">
+            <button type="submit" className="form-submit">
               <Save size={16} /> Save profile
             </button>
           </form>
@@ -1104,7 +1131,7 @@ function StayEditForm({
         Exit
         <input name="exitDate" type="date" defaultValue={stay.knownExitDate ?? ""} />
         <span className="field-help">
-          Leave blank for your current stay. It counts through today and updates daily.
+          Leave blank for your current stay. Future planned stays should include an exit date.
         </span>
       </label>
       <label>
@@ -1377,10 +1404,16 @@ function EvidenceForm({
 function ProjectionPanel({
   projection,
   setProjection,
+  plannedProjections,
+  onAddProjection,
+  onRemoveProjection,
   progress
 }: {
   projection: ProjectionInput;
   setProjection: React.Dispatch<React.SetStateAction<ProjectionInput>>;
+  plannedProjections: ProjectionInput[];
+  onAddProjection: (projection: ProjectionInput) => void;
+  onRemoveProjection: (index: number) => void;
   progress: RuleProgress[];
 }) {
   return (
@@ -1388,10 +1421,14 @@ function ProjectionPanel({
       <h2>
         <Target size={18} /> Projection
       </h2>
-      <p>
-        Preview a future stay against current targets.
-      </p>
-      <div className="projection-grid">
+      <p>Plan one or more future stays against current targets.</p>
+      <form
+        className="projection-grid"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onAddProjection(projection);
+        }}
+      >
         <label>
           Country
           <CountryCodeField
@@ -1429,19 +1466,51 @@ function ProjectionPanel({
             }
           />
         </label>
-      </div>
+        <button type="submit" className="projection-add-button">
+          <Plus size={16} /> Add trip
+        </button>
+      </form>
+      {plannedProjections.length > 0 && (
+        <div className="planned-trip-list" aria-label="Planned trips">
+          {plannedProjections.map((item, index) => (
+            <div key={`${item.country}-${item.entryDate}-${item.exitDate}-${index}`} className="planned-trip-row">
+              <span className="country-avatar" title={countryName(item.country)}>
+                {countryFlag(item.country)}
+              </span>
+              <span>
+                <strong>{item.label || countryName(item.country)}</strong>
+                <small>
+                  {countryName(item.country)} · {formatDateRange(item.entryDate, item.exitDate)}
+                </small>
+              </span>
+              <button
+                type="button"
+                className="icon-button danger-button"
+                aria-label={`Remove ${item.label || countryName(item.country)}`}
+                onClick={() => onRemoveProjection(index)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="projection-results">
-        {progress.map((item) => (
-          <div key={item.rule.id} className={`projection-result ${item.tone}`}>
-            {item.rule.direction === "minimum" ? <BadgeCheck size={16} /> : <CircleAlert size={16} />}
-            <span>
-              <strong>{item.rule.label}</strong>
-              <small>
-                {item.detailText} · {item.statusText}
-              </small>
-            </span>
-          </div>
-        ))}
+        {progress.length > 0 ? (
+          progress.map((item) => (
+            <div key={item.rule.id} className={`projection-result ${item.tone}`}>
+              {item.rule.direction === "minimum" ? <BadgeCheck size={16} /> : <CircleAlert size={16} />}
+              <span>
+                <strong>{item.rule.label}</strong>
+                <small>
+                  {item.detailText} · {item.statusText}
+                </small>
+              </span>
+            </div>
+          ))
+        ) : (
+          <p className="empty-copy">Add a planned trip to preview target impact.</p>
+        )}
       </div>
     </section>
   );
