@@ -1621,7 +1621,7 @@ function RuleForm({
         </fieldset>
         <div className="rule-window-row">
           <label>
-            Year/Window
+            Year / Window
             <select
               name="windowType"
               value={selectedWindowType}
@@ -1630,7 +1630,7 @@ function RuleForm({
               }
             >
               <option value="calendar_year">Calendar Year</option>
-              <option value="fiscal_year">Fiscal/Tax Year</option>
+              <option value="fiscal_year">Fiscal / Tax Year</option>
               <option value="rolling_days">Rolling Days</option>
             </select>
           </label>
@@ -1788,7 +1788,7 @@ function ProjectionPanel({
       <h2>
         <Target size={18} /> Projection
       </h2>
-      <p>Plan one or more future stays against current targets.</p>
+      <p>Plan one or more future trips against current targets.</p>
       <form
         className="projection-grid"
         onSubmit={(event) => {
