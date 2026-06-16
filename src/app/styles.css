@@ -730,25 +730,25 @@ button.secondary.active {
 
 .rule-form-grid {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: repeat(16, minmax(0, 1fr));
   gap: 0.65rem;
 }
 
 .rule-form-grid > label {
-  grid-column: span 3;
+  grid-column: span 4;
 }
 
 .rule-label-field,
 .rule-countries-field {
-  grid-column: span 3;
+  grid-column: span 4;
 }
 
 .rule-description-field {
-  grid-column: span 6;
+  grid-column: span 8;
 }
 
 .rule-counting-field {
-  grid-column: span 6;
+  grid-column: span 8;
 }
 
 .checkbox-label {

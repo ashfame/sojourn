@@ -1426,6 +1426,9 @@ function RuleForm({
   const [selectedCounting, setSelectedCounting] = useState<CountingConvention>(
     rule?.counting ?? "entry_exit_count"
   );
+  const [selectedWindowType, setSelectedWindowType] = useState<WindowDefinition["type"]>(
+    windowType
+  );
   return (
     <form
       className={`rule-form ${rule ? "" : "new-rule"}`}
@@ -1496,24 +1499,36 @@ function RuleForm({
         </label>
         <label>
           Year/window
-          <select name="windowType" defaultValue={windowType}>
+          <select
+            name="windowType"
+            value={selectedWindowType}
+            onChange={(event) =>
+              setSelectedWindowType(event.target.value as WindowDefinition["type"])
+            }
+          >
             <option value="calendar_year">Calendar year</option>
             <option value="fiscal_year">Fiscal/tax year</option>
             <option value="rolling_days">Rolling days</option>
           </select>
         </label>
-        <label>
-          Fiscal start month
-          <input name="startMonth" type="number" min="1" max="12" defaultValue={startMonth} />
-        </label>
-        <label>
-          Fiscal start day
-          <input name="startDay" type="number" min="1" max="31" defaultValue={startDay} />
-        </label>
-        <label>
-          Rolling window days
-          <input name="rollingDays" type="number" min="1" defaultValue={rollingDays} />
-        </label>
+        {selectedWindowType === "fiscal_year" && (
+          <>
+            <label>
+              Fiscal start month
+              <input name="startMonth" type="number" min="1" max="12" defaultValue={startMonth} />
+            </label>
+            <label>
+              Fiscal start day
+              <input name="startDay" type="number" min="1" max="31" defaultValue={startDay} />
+            </label>
+          </>
+        )}
+        {selectedWindowType === "rolling_days" && (
+          <label>
+            Rolling window days
+            <input name="rollingDays" type="number" min="1" defaultValue={rollingDays} />
+          </label>
+        )}
       </div>
       <button type="submit">
         <Save size={15} /> {rule ? "Save target" : "Add target"}
