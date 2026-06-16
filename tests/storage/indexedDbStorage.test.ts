@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
 import { createInitialData, defaultRules, migrateAppData } from "../../src/domain/seed";
-import { blobToArrayBuffer } from "../../src/storage/archive";
+import { blobToArrayBuffer, parseArchive } from "../../src/storage/archive";
 import { STORAGE_BACKUP_KEY, createIndexedDbStorage } from "../../src/storage/indexedDbStorage";
 
 describe("indexedDbStorage", () => {
@@ -91,9 +91,9 @@ describe("indexedDbStorage", () => {
       ]
     };
 
-    const imported = await storage.importData({
-      text: () => Promise.resolve(JSON.stringify(data))
-    } as Blob);
+    const imported = await storage.importData(
+      new File([JSON.stringify(data)], "sojourn-data.json", { type: "application/json" })
+    );
 
     expect(imported.stays.map((stay) => stay.id)).toEqual(["stay_imported"]);
   });
@@ -133,11 +133,23 @@ describe("indexedDbStorage", () => {
       new Blob(["pdf-data"], { type: "application/pdf" })
     );
     const archive = await storage.exportData(data);
-    const imported = await storage.importData(archive);
+    const parsedArchive = await parseArchive(archive);
+    const imported = await storage.importData(
+      new File([await blobToArrayBuffer(archive)], "sojourn-export.zip", {
+        type: "application/zip"
+      })
+    );
     const importedEvidence = imported.evidence[0]!;
     const importedFile = await storage.getEvidenceFile(importedEvidence);
 
-    expect(archive.type).toBe("application/x-tar");
+    expect(archive.type).toBe("application/zip");
+    expect(parsedArchive.files).toHaveLength(1);
+    expect(parsedArchive.files[0]?.path).toBe(
+      "evidence/boarding_pass_dxb-boarding-pass_evidence-pdf.pdf"
+    );
+    expect(new TextDecoder().decode(await blobToArrayBuffer(parsedArchive.files[0]!.blob))).toBe(
+      "pdf-data"
+    );
     expect(importedEvidence.fileName).toMatch(/^boarding_pass_dxb-boarding-pass_evidence-pdf\.pdf$/);
     expect(importedEvidence.blobKey).toBe("evidence/evidence_pdf");
     expect(new TextDecoder().decode(await blobToArrayBuffer(importedFile!))).toBe("pdf-data");

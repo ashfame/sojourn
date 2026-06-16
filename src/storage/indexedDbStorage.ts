@@ -1,7 +1,7 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 import { createInitialData, migrateAppData } from "../domain/seed";
 import type { AppData } from "../domain/types";
-import { blobToArrayBuffer, createArchive, parseArchive } from "./archive";
+import { blobToArrayBuffer, blobToText, createArchive, parseArchive } from "./archive";
 import type { PersistedAppData, StorageDriver, StorageMetadata } from "./storageDriver";
 
 const DB_NAME = "sojourn-browser-store";
@@ -145,7 +145,7 @@ export const createIndexedDbStorage = (): StorageDriver => ({
     const type = "type" in blob ? blob.type : "";
     const looksJson = type.includes("json") || fileName.endsWith(".json");
     if (looksJson) {
-      const text = await blob.text();
+      const text = await blobToText(blob);
       return migrateAppData(JSON.parse(text) as AppData);
     }
     try {
@@ -179,7 +179,7 @@ export const createIndexedDbStorage = (): StorageDriver => ({
       );
       return data;
     } catch {
-      const text = await blob.text();
+      const text = await blobToText(blob);
       return migrateAppData(JSON.parse(text) as AppData);
     }
   },

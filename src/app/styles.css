@@ -268,7 +268,6 @@ button.secondary.active {
 }
 
 .target-card small,
-.projection-result small,
 .planned-trip-row small,
 .evidence-row small {
   color: #77746b;
@@ -678,45 +677,6 @@ button.secondary.active {
   overflow-wrap: anywhere;
 }
 
-.projection-results {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
-}
-
-.projection-results .empty-copy {
-  grid-column: 1 / -1;
-}
-
-.projection-result {
-  border: 1px solid #ded8cc;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 0.65rem;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.5rem;
-  align-items: start;
-}
-
-.projection-result.safe svg,
-.projection-result.good svg {
-  color: #1d9e75;
-}
-
-.projection-result.watch svg {
-  color: #ef9f27;
-}
-
-.projection-result.danger svg {
-  color: #c94b4b;
-}
-
-.projection-result span {
-  display: grid;
-  gap: 0.15rem;
-}
-
 .settings-panel {
   margin-bottom: 2rem;
 }
@@ -770,12 +730,25 @@ button.secondary.active {
 
 .rule-form-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 0.65rem;
 }
 
+.rule-form-grid > label {
+  grid-column: span 3;
+}
+
+.rule-label-field,
+.rule-countries-field {
+  grid-column: span 3;
+}
+
 .rule-description-field {
-  grid-column: span 2;
+  grid-column: span 6;
+}
+
+.rule-counting-field {
+  grid-column: span 6;
 }
 
 .checkbox-label {
@@ -910,8 +883,7 @@ button.secondary.active {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .target-strip,
-  .projection-results {
+  .target-strip {
     grid-template-columns: 1fr;
   }
 
@@ -939,7 +911,9 @@ button.secondary.active {
     width: 100%;
   }
 
-  .rule-description-field {
+  .rule-form-grid > label,
+  .rule-description-field,
+  .rule-counting-field {
     grid-column: auto;
   }
 

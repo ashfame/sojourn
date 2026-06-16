@@ -380,6 +380,7 @@ export function App() {
     }
     return computeRuleProgress(data, ruleAsOfDate(projectedStays, asOf), projectedStays);
   }, [asOf, data, projectedStays]);
+  const planProgress = projectionProgress.length > 0 ? projectionProgress : progress;
   useEffect(() => {
     if (!evidencePreview) {
       return undefined;
@@ -831,21 +832,13 @@ export function App() {
       )}
 
       {activeView === "timeline" && progress.length > 0 && (
-        <section className="target-strip" aria-label="Residency targets">
-          {progress.map((item) => (
-            <TargetCard key={item.rule.id} progress={item} />
-          ))}
-        </section>
+        <TargetStrip progress={progress} label="Residency targets" />
       )}
 
       {activeView === "targets" && (
         <>
           {progress.length > 0 && (
-            <section className="target-strip" aria-label="Residency targets">
-              {progress.map((item) => (
-                <TargetCard key={item.rule.id} progress={item} />
-              ))}
-            </section>
+            <TargetStrip progress={progress} label="Residency targets" />
           )}
           <TargetEditor
             rules={data.rules}
@@ -944,14 +937,23 @@ export function App() {
       )}
 
       {activeView === "projection" && (
-        <ProjectionPanel
-          projection={projection}
-          setProjection={setProjection}
-          plannedProjections={plannedProjections}
-          onAddProjection={addPlannedProjection}
-          onRemoveProjection={removePlannedProjection}
-          progress={projectionProgress}
-        />
+        <>
+          {planProgress.length > 0 && (
+            <TargetStrip
+              progress={planProgress}
+              label={
+                plannedProjections.length > 0 ? "Projected residency targets" : "Residency targets"
+              }
+            />
+          )}
+          <ProjectionPanel
+            projection={projection}
+            setProjection={setProjection}
+            plannedProjections={plannedProjections}
+            onAddProjection={addPlannedProjection}
+            onRemoveProjection={removePlannedProjection}
+          />
+        </>
       )}
 
       {activeView === "data" && (
@@ -1001,7 +1003,7 @@ export function App() {
                 aria-label="Import data"
                 className="file-input"
                 type="file"
-                accept="application/json,application/x-tar,.json,.tar"
+                accept="application/json,application/zip,.json,.zip"
                 onChange={(event) => {
                   importSnapshot(event.currentTarget.files?.[0]);
                   event.currentTarget.value = "";
@@ -1013,7 +1015,7 @@ export function App() {
                 onClick={() => {
                   void storage
                     .exportData(data)
-                    .then((blob) => downloadBlob(blob, "sojourn-export.tar"));
+                    .then((blob) => downloadBlob(blob, "sojourn-export.zip"));
                 }}
               >
                 <ArchiveIcon size={16} /> Export archive
@@ -1026,6 +1028,16 @@ export function App() {
         <EvidencePreviewModal preview={evidencePreview} onClose={closeEvidencePreview} />
       )}
     </main>
+  );
+}
+
+function TargetStrip({ progress, label }: { progress: RuleProgress[]; label: string }) {
+  return (
+    <section className="target-strip" aria-label={label}>
+      {progress.map((item) => (
+        <TargetCard key={item.rule.id} progress={item} />
+      ))}
+    </section>
   );
 }
 
@@ -1431,17 +1443,25 @@ function RuleForm({
         )}
       </div>
       <div className="rule-form-grid">
-        <label>
+        <label className="rule-label-field">
           Label
           <input name="label" defaultValue={rule?.label ?? ""} placeholder="India under 60" />
         </label>
-        <label>
+        <label className="rule-countries-field">
           Countries
           <input
             name="countryScope"
             defaultValue={rule?.countryScope.join(", ") ?? "IN"}
             placeholder="IN or FR, DE, ES"
             required
+          />
+        </label>
+        <label className="rule-description-field">
+          Description
+          <input
+            name="description"
+            defaultValue={rule?.description ?? ""}
+            placeholder="Maximum 59 days · FY Apr-Mar"
           />
         </label>
         <label>
@@ -1460,6 +1480,19 @@ function RuleForm({
             defaultValue={rule?.threshold ?? 59}
             required
           />
+        </label>
+        <label className="rule-counting-field">
+          Counting
+          <select
+            name="counting"
+            value={selectedCounting}
+            onChange={(event) => setSelectedCounting(event.target.value as CountingConvention)}
+          >
+            <option value="entry_exit_count">Inclusive dates: entry + exit count</option>
+            <option value="exclude_exit_day">Exclude exit date: nights-style</option>
+            <option value="presence_any_part">Any touched date: date-only inclusive</option>
+          </select>
+          <span className="field-help">{countingDescriptions[selectedCounting]}</span>
         </label>
         <label>
           Year/window
@@ -1480,27 +1513,6 @@ function RuleForm({
         <label>
           Rolling window days
           <input name="rollingDays" type="number" min="1" defaultValue={rollingDays} />
-        </label>
-        <label>
-          Counting
-          <select
-            name="counting"
-            value={selectedCounting}
-            onChange={(event) => setSelectedCounting(event.target.value as CountingConvention)}
-          >
-            <option value="entry_exit_count">Inclusive dates: entry + exit count</option>
-            <option value="exclude_exit_day">Exclude exit date: nights-style</option>
-            <option value="presence_any_part">Any touched date: date-only inclusive</option>
-          </select>
-          <span className="field-help">{countingDescriptions[selectedCounting]}</span>
-        </label>
-        <label className="rule-description-field">
-          Description
-          <input
-            name="description"
-            defaultValue={rule?.description ?? ""}
-            placeholder="Maximum 59 days · FY Apr-Mar"
-          />
         </label>
       </div>
       <button type="submit">
@@ -1611,15 +1623,13 @@ function ProjectionPanel({
   setProjection,
   plannedProjections,
   onAddProjection,
-  onRemoveProjection,
-  progress
+  onRemoveProjection
 }: {
   projection: ProjectionInput;
   setProjection: React.Dispatch<React.SetStateAction<ProjectionInput>>;
   plannedProjections: ProjectionInput[];
   onAddProjection: (projection: ProjectionInput) => void;
   onRemoveProjection: (index: number) => void;
-  progress: RuleProgress[];
 }) {
   return (
     <section className="panel projection-panel">
@@ -1700,23 +1710,6 @@ function ProjectionPanel({
           ))}
         </div>
       )}
-      <div className="projection-results">
-        {progress.length > 0 ? (
-          progress.map((item) => (
-            <div key={item.rule.id} className={`projection-result ${item.tone}`}>
-              {item.rule.direction === "minimum" ? <BadgeCheck size={16} /> : <CircleAlert size={16} />}
-              <span>
-                <strong>{item.rule.label}</strong>
-                <small>
-                  {item.detailText} · {item.statusText}
-                </small>
-              </span>
-            </div>
-          ))
-        ) : (
-          <p className="empty-copy">Add a planned trip to preview target impact.</p>
-        )}
-      </div>
     </section>
   );
 }
