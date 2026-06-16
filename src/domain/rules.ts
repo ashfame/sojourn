@@ -27,11 +27,17 @@ import type {
 const sortedStaysAsc = (stays: Stay[]): Stay[] =>
   [...stays].sort((left, right) => compareDate(left.entryDate, right.entryDate));
 
-const endDateFor = (stay: Stay, asOf: string): string => {
+const endDateFor = (stay: Stay, asOf: string, nextStay?: Stay): string => {
   if (stay.exitDate) {
     return stay.exitDate;
   }
-  return isAfter(stay.entryDate, asOf) ? stay.entryDate : asOf;
+  if (isAfter(stay.entryDate, asOf)) {
+    return stay.entryDate;
+  }
+  if (nextStay && !isAfter(stay.entryDate, nextStay.entryDate)) {
+    return minDate(asOf, maxDate(stay.entryDate, addDays(nextStay.entryDate, -1)));
+  }
+  return asOf;
 };
 
 export const createTimeline = (
@@ -89,13 +95,17 @@ export const createTimeline = (
     });
   };
 
+  const endDateAt = (index: number): string =>
+    endDateFor(stays[index]!, asOf, stays[index + 1]);
+
   const timelineEnd = stays.reduce(
-    (latest, stay) => maxDate(latest, endDateFor(stay, asOf)),
+    (latest, _stay, index) => maxDate(latest, endDateAt(index)),
     asOf
   );
 
-  for (const stay of stays) {
-    const stayEnd = endDateFor(stay, asOf);
+  for (let index = 0; index < stays.length; index += 1) {
+    const stay = stays[index]!;
+    const stayEnd = endDateAt(index);
     if (cursor && isBefore(cursor, stay.entryDate)) {
       const gapEnd = addDays(stay.entryDate, -1);
       pushUnaccounted(cursor, gapEnd);

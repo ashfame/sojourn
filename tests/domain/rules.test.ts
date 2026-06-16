@@ -164,6 +164,57 @@ describe("rule engine", () => {
     expect(timeline[0]?.knownExitDate).toBeUndefined();
   });
 
+  it("caps active stays before projected stays instead of extending them to the projection horizon", () => {
+    const data = {
+      ...createInitialData(),
+      rules: defaultRules.map((rule) => ({ ...rule, countryScope: [...rule.countryScope] })),
+      stays: [
+        {
+          id: "stay_india_active",
+          country: "IN",
+          entryDate: "2026-06-01",
+          label: "Current India stay",
+          createdAt: "2026-06-01T00:00:00.000Z",
+          updatedAt: "2026-06-01T00:00:00.000Z"
+        }
+      ]
+    };
+    const nepal = {
+      ...projectionStay({
+        country: "NP",
+        entryDate: "2026-06-17",
+        exitDate: "2026-06-30",
+        label: "June Nepal"
+      }),
+      id: "projection_nepal"
+    };
+    const uae = {
+      ...projectionStay({
+        country: "AE",
+        entryDate: "2026-07-01",
+        exitDate: "2026-07-31",
+        label: "July UAE"
+      }),
+      id: "projection_uae"
+    };
+
+    const projectedProgress = new Map(
+      computeRuleProgress(data, "2026-07-31", [nepal, uae]).map((item) => [
+        item.rule.id,
+        item
+      ])
+    );
+    const timeline = createTimeline(data, "2026-07-31", [nepal, uae]);
+
+    expect(projectedProgress.get("rule_india_nri")?.usedDays).toBe(16);
+    expect(projectedProgress.get("rule_uae_183")?.usedDays).toBe(31);
+    expect(timeline.find((stay) => stay.id === "stay_india_active")).toMatchObject({
+      exitDate: "2026-06-16",
+      countExitDate: "2026-06-16",
+      durationDays: 16
+    });
+  });
+
   it("counts stored dated stays through a known future exit", () => {
     const data = {
       ...createInitialData(),
