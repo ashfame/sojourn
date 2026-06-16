@@ -46,7 +46,7 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await projectionForm.getByLabel("Country").fill("IN");
   await projectionForm.getByLabel("Entry").fill("2026-08-20");
   await projectionForm.getByLabel("Exit").fill("2026-08-21");
-  await projectionForm.getByLabel("Label").fill("Follow-up plan");
+  await projectionForm.getByLabel("Label").fill("Second India plan");
   await projectionForm.getByRole("button", { name: /Add trip/ }).click();
   await expect(page.locator(".planned-trip-row")).toHaveCount(2);
   await expect(page.getByText("24 of 58 days used")).toBeVisible();
