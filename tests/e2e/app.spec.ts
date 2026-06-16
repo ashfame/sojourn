@@ -36,6 +36,7 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await page.getByRole("button", { name: "Edit India Under 60" }).click();
   const indiaTarget = page.locator("form.rule-form").filter({ hasText: "India Under 60" });
   await expect(indiaTarget.getByText("Arrival and Departure Dates")).toBeVisible();
+  await expect(indiaTarget.getByText("Any Date Touched")).not.toBeVisible();
   await indiaTarget.getByLabel("Max or Target Days").fill("58");
   await indiaTarget.getByRole("button", { name: /Save Target/ }).click();
   await expect(page.getByText("Target updated.")).toBeVisible();

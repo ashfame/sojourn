@@ -49,7 +49,7 @@ export const defaultRules: Rule[] = [
     threshold: 183,
     direction: "minimum",
     window: { type: "calendar_year" },
-    counting: "presence_any_part",
+    counting: "entry_exit_count",
     description: "183 days in calendar year · for TRC"
   },
   {

@@ -88,9 +88,9 @@ VITE_BASE_PATH=/sojourn/ npm run build:static
 - Targets are configurable. Each rule owns its countries, threshold, direction, counting convention, and window.
 - Duplicate targets with the same countries, threshold, direction, window, and counting policy are blocked.
 - Counting policies are per-target:
-  - inclusive dates: entry and exit dates count,
-  - exclude exit date: nights-style counting,
-  - any touched date: date-only inclusive, reserved for future time-aware stays.
+  - inclusive dates: entry and exit dates count.
+  - exclude exit date: nights-style counting.
+  - Legacy imported rules may still contain `presence_any_part`, which currently behaves like inclusive dates.
 - For ceiling rules, the threshold is the maximum safe day count. For example, "under 60" is configured as `59`.
 - Nationality and legal residence are profile metadata, hidden behind the `Data & profile` panel.
 - Export is also kept behind `Data & profile` so the main screen stays focused on targets and timeline.

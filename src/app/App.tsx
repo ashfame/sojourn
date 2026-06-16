@@ -103,7 +103,7 @@ const ruleSuggestions: Array<{
       threshold: 183,
       direction: "minimum",
       window: { type: "calendar_year" },
-      counting: "presence_any_part",
+      counting: "entry_exit_count",
       description: "183 days in calendar year"
     })
   },
@@ -231,13 +231,18 @@ const windowSignature = (window: WindowDefinition): string => {
   return "calendar";
 };
 
+type VisibleCountingConvention = Exclude<CountingConvention, "presence_any_part">;
+
+const normalizeVisibleCounting = (counting: unknown): VisibleCountingConvention =>
+  counting === "exclude_exit_day" ? "exclude_exit_day" : "entry_exit_count";
+
 const ruleSignature = (rule: Pick<Rule, "countryScope" | "direction" | "threshold" | "window" | "counting">): string =>
   [
     [...new Set(rule.countryScope.map((country) => country.toUpperCase()))].sort().join(","),
     rule.direction,
     rule.threshold,
     windowSignature(rule.window),
-    rule.counting
+    normalizeVisibleCounting(rule.counting)
   ].join("|");
 
 const hasEquivalentRule = (rules: Rule[], candidate: Rule, ignoredRuleId?: string): boolean =>
@@ -248,23 +253,19 @@ const isActiveTimelineStay = (stay: TimelineStay): boolean =>
   (stay.knownExitDate === undefined ||
     (stay.exitDate !== undefined && isAfter(stay.knownExitDate, stay.exitDate)));
 
-const countingDescriptions: Record<CountingConvention, string> = {
+const countingDescriptions: Record<VisibleCountingConvention, string> = {
   entry_exit_count: "Counts both the arrival date and departure date.",
-  exclude_exit_day: "Counts the arrival date, but not the departure date.",
-  presence_any_part:
-    "Counts any date touched by the stay. With date-only stays this matches inclusive counting."
+  exclude_exit_day: "Counts the arrival date, but not the departure date."
 };
 
-const countingLabels: Record<CountingConvention, string> = {
+const countingLabels: Record<VisibleCountingConvention, string> = {
   entry_exit_count: "Arrival and Departure Dates",
-  exclude_exit_day: "Exclude Departure Date",
-  presence_any_part: "Any Date Touched"
+  exclude_exit_day: "Exclude Departure Date"
 };
 
-const countingOptions: CountingConvention[] = [
+const countingOptions: VisibleCountingConvention[] = [
   "entry_exit_count",
-  "exclude_exit_day",
-  "presence_any_part"
+  "exclude_exit_day"
 ];
 
 const ruleDirectionLabels: Record<RuleDirection, string> = {
@@ -725,7 +726,7 @@ export function App() {
       threshold: numberFromForm(formData, "threshold", 1),
       direction: String(formData.get("direction")) as RuleDirection,
       window: windowFromForm(formData),
-      counting: String(formData.get("counting")) as CountingConvention,
+      counting: normalizeVisibleCounting(formData.get("counting")),
       description: String(formData.get("description") || "").trim()
     };
     if (hasEquivalentRule(data.rules, nextRule, ruleId)) {
@@ -1537,8 +1538,8 @@ function RuleForm({
   const startMonth = rule?.window.type === "fiscal_year" ? rule.window.startMonth : 1;
   const startDay = rule?.window.type === "fiscal_year" ? rule.window.startDay : 1;
   const rollingDays = rule?.window.type === "rolling_days" ? rule.window.days : 180;
-  const [selectedCounting, setSelectedCounting] = useState<CountingConvention>(
-    rule?.counting ?? "entry_exit_count"
+  const [selectedCounting, setSelectedCounting] = useState<VisibleCountingConvention>(
+    normalizeVisibleCounting(rule?.counting)
   );
   const [selectedWindowType, setSelectedWindowType] = useState<WindowDefinition["type"]>(
     windowType

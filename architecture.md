@@ -245,8 +245,9 @@ Rules support these counting conventions:
 - `exclude_exit_day`: count entry through the day before a known exit, except
   do not subtract a day merely because the stored exit falls after the reporting
   period.
-- `presence_any_part`: date-only inclusive counting. With the current date-only
-  model this matches `entry_exit_count`.
+- `presence_any_part`: legacy/internal value for imported or existing data. With
+  the current date-only model this matches `entry_exit_count` and is not exposed
+  as a selectable UI option.
 
 Counting implementation:
 
