@@ -275,7 +275,7 @@ button.secondary.active {
   font-size: 0.76rem;
 }
 
-.target-meta span {
+.target-meta > span {
   min-width: 0;
 }
 
@@ -283,6 +283,13 @@ button.secondary.active {
   margin-left: auto;
   text-align: right;
   white-space: nowrap;
+}
+
+.target-status {
+  display: grid;
+  justify-items: end;
+  line-height: 1.08;
+  white-space: normal;
 }
 
 .rule-badge {
@@ -328,7 +335,7 @@ button.secondary.active {
   background: #c94b4b;
 }
 
-.target-meta span {
+.target-meta > span {
   min-width: 0;
   color: #6f6d64;
   font-size: 0.8rem;

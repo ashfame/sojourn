@@ -1030,6 +1030,7 @@ export function App() {
 }
 
 function TargetCard({ progress }: { progress: RuleProgress }) {
+  const statusLines = splitTargetStatus(progress.statusText);
   return (
     <article className={`target-card ${progress.tone}`}>
       <div className="target-title-row">
@@ -1042,11 +1043,20 @@ function TargetCard({ progress }: { progress: RuleProgress }) {
       </div>
       <div className="target-meta">
         <span>{progress.detailText}</span>
-        <strong>{progress.statusText}</strong>
+        <strong className="target-status" aria-label={progress.statusText}>
+          {statusLines.map((line, index) => (
+            <span key={`${line}-${index}`}>{line}</span>
+          ))}
+        </strong>
       </div>
       <small>{describeRuleWindow(progress)}</small>
     </article>
   );
+}
+
+function splitTargetStatus(status: string): string[] {
+  const match = /^(\d+\s+days?)\s+(remaining|to go)$/.exec(status);
+  return match ? [`${match[1]} `, match[2] ?? ""] : [status];
 }
 
 function CountryOptionsDatalist() {
