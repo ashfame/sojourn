@@ -1,9 +1,7 @@
-const CACHE_NAME = "residency-days-app-v1";
-const scopePath = new URL(self.registration.scope).pathname;
-const APP_SHELL = [scopePath, `${scopePath}index.html`];
+const CACHE_NAME = "sojourn-runtime-v2";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(Promise.resolve());
   self.skipWaiting();
 });
 
@@ -14,8 +12,14 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
       )
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SOJOURN_SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {
@@ -29,18 +33,25 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (
+    request.mode === "navigate" ||
+    url.pathname.endsWith("/index.html") ||
+    url.pathname.endsWith("/version.json") ||
+    url.pathname.endsWith("/sw.js")
+  ) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-      return fetch(request)
-        .then((response) => {
+    fetch(request)
+      .then((response) => {
+        if (response.ok) {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(() => caches.match(`${scopePath}index.html`));
-    })
+          event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request))
   );
 });

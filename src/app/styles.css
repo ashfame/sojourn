@@ -311,7 +311,11 @@ label {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.65rem;
-  align-items: end;
+  align-items: start;
+}
+
+.form-submit {
+  align-self: end;
 }
 
 .timeline-section {

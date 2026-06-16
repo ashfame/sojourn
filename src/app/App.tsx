@@ -705,7 +705,7 @@ export function App() {
               Label
               <input name="label" placeholder="City, trip, or reason" />
             </label>
-            <button type="submit">
+            <button type="submit" className="form-submit">
               <Plus size={16} /> Save stay
             </button>
           </form>
