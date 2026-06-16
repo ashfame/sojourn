@@ -59,8 +59,6 @@ export const createTimeline = (
     source: TimelineStay["source"],
     countEntryDate: string,
     countExitDate: string,
-    durationEntryDate = countEntryDate,
-    durationExitDate = countExitDate,
     knownExitDate?: string
   ): void => {
     const evidence = evidenceByStay.get(stay.id) ?? [];
@@ -70,7 +68,7 @@ export const createTimeline = (
       countEntryDate,
       countExitDate,
       ...(knownExitDate ? { knownExitDate } : {}),
-      durationDays: daysInclusive(durationEntryDate, durationExitDate),
+      durationDays: daysInclusive(countEntryDate, countExitDate),
       evidence,
       evidenceStatus: scoreEvidence(evidence, { ongoing: knownExitDate === undefined })
     });
@@ -110,13 +108,10 @@ export const createTimeline = (
       const gapEnd = addDays(stay.entryDate, -1);
       pushUnaccounted(cursor, gapEnd);
     }
-    const durationStart = cursor ? maxDate(stay.entryDate, cursor) : stay.entryDate;
     pushStay(
       { ...stay, exitDate: stayEnd },
       "explicit",
       stay.entryDate,
-      stayEnd,
-      isAfter(durationStart, stayEnd) ? stay.entryDate : durationStart,
       stayEnd,
       stay.exitDate
     );
@@ -259,9 +254,15 @@ export const timelineSummary = (timeline: TimelineStay[]): string => {
   if (timeline.length === 0) {
     return "No stays yet";
   }
-  const trackedDays = timeline
-    .filter((stay) => stay.source === "explicit")
-    .reduce((sum, stay) => sum + stay.durationDays, 0);
+  const trackedDates = new Set<string>();
+  for (const stay of timeline) {
+    if (stay.source === "explicit") {
+      for (const day of eachDayInclusive(stay.countEntryDate, stay.countExitDate)) {
+        trackedDates.add(day);
+      }
+    }
+  }
+  const trackedDays = trackedDates.size;
   const unaccountedDays = timeline
     .filter((stay) => stay.source === "unaccounted")
     .reduce((sum, stay) => sum + stay.durationDays, 0);

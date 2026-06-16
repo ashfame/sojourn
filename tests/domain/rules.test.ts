@@ -80,15 +80,71 @@ describe("rule engine", () => {
     expect(timeline.some((stay) => stay.label === "11 days unaccounted for")).toBe(true);
   });
 
-  it("keeps transfer-day display durations for explicit travel", () => {
+  it("shows inclusive display durations for explicit travel", () => {
     const data = sampleData();
     const timeline = createTimeline(data, "2026-06-10");
 
     expect(timeline.some((stay) => stay.source === "unaccounted" && stay.entryDate === "2026-06-09")).toBe(
       true
     );
-    expect(timeline.some((stay) => stay.country === "PL" && stay.durationDays === 5)).toBe(true);
+    expect(timeline.some((stay) => stay.country === "PL" && stay.durationDays === 6)).toBe(true);
     expect(timeline.some((stay) => stay.country === "ES" && stay.durationDays === 11)).toBe(true);
+  });
+
+  it("shows India stays as inclusive ranges even when arrival overlaps a transfer day", () => {
+    const data = createInitialData();
+    data.stays.push(
+      {
+        id: "stay_uae_before_march_india",
+        country: "AE",
+        entryDate: "2026-03-01",
+        exitDate: "2026-03-10",
+        label: "Dubai",
+        createdAt: "2026-03-01T00:00:00.000Z",
+        updatedAt: "2026-03-01T00:00:00.000Z"
+      },
+      {
+        id: "stay_india_march",
+        country: "IN",
+        entryDate: "2026-03-10",
+        exitDate: "2026-03-14",
+        label: "March India",
+        createdAt: "2026-03-10T00:00:00.000Z",
+        updatedAt: "2026-03-10T00:00:00.000Z"
+      },
+      {
+        id: "stay_uae_before_may_india",
+        country: "AE",
+        entryDate: "2026-05-01",
+        exitDate: "2026-05-18",
+        label: "Dubai",
+        createdAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z"
+      },
+      {
+        id: "stay_india_may",
+        country: "IN",
+        entryDate: "2026-05-18",
+        exitDate: "2026-05-24",
+        label: "May India",
+        createdAt: "2026-05-18T00:00:00.000Z",
+        updatedAt: "2026-05-18T00:00:00.000Z"
+      },
+      {
+        id: "stay_india_june_active",
+        country: "IN",
+        entryDate: "2026-06-08",
+        label: "June India",
+        createdAt: "2026-06-08T00:00:00.000Z",
+        updatedAt: "2026-06-08T00:00:00.000Z"
+      }
+    );
+
+    const timeline = createTimeline(data, "2026-06-16");
+
+    expect(timeline.find((stay) => stay.id === "stay_india_march")?.durationDays).toBe(5);
+    expect(timeline.find((stay) => stay.id === "stay_india_may")?.durationDays).toBe(7);
+    expect(timeline.find((stay) => stay.id === "stay_india_june_active")?.durationDays).toBe(9);
   });
 
   it("counts UAE minimum days in a calendar year", () => {

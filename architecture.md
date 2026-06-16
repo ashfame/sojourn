@@ -213,8 +213,9 @@ Important behavior:
   through that future date.
 - Missing periods between explicit stays are rendered as synthetic
   `source: "unaccounted"` rows.
-- Display durations are inclusive, but overlapping transfer days are handled so
-  adjacent explicit stays do not inflate displayed tracked totals.
+- Display durations are inclusive for each stay's own date range. Timeline
+  summaries count unique explicit dates so overlapping transfer days do not
+  inflate the tracked total.
 
 The timeline row fields distinguish raw stored dates from counting dates:
 
@@ -422,7 +423,7 @@ GitHub Actions:
 Unit/domain coverage:
 
 - empty first-run data
-- timeline gaps and transfer-day duration behavior
+- timeline gaps, inclusive stay durations, and transfer-day summary behavior
 - calendar, fiscal, and rolling rule windows
 - active stays
 - known future exits
