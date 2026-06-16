@@ -255,6 +255,12 @@ const countingDescriptions: Record<CountingConvention, string> = {
     "Counts any date touched by the stay. With date-only stays this matches inclusive counting."
 };
 
+const countingOptions: CountingConvention[] = [
+  "entry_exit_count",
+  "exclude_exit_day",
+  "presence_any_part"
+];
+
 type TimelineRenderItem =
   | { type: "year"; id: string; year: string }
   | { type: "stay"; id: string; stay: TimelineStay };
@@ -1579,61 +1585,66 @@ function RuleForm({
             required
           />
         </label>
-        <label className="rule-counting-field">
-          Counting
-          <select
-            name="counting"
-            value={selectedCounting}
-            onChange={(event) => setSelectedCounting(event.target.value as CountingConvention)}
-          >
-            <option value="entry_exit_count">Inclusive dates: entry + exit count</option>
-            <option value="exclude_exit_day">Exclude exit date: nights-style</option>
-            <option value="presence_any_part">Any touched date: date-only inclusive</option>
-          </select>
-          <span className="field-help">{countingDescriptions[selectedCounting]}</span>
-        </label>
-        <label>
-          Year/window
-          <select
-            name="windowType"
-            value={selectedWindowType}
-            onChange={(event) =>
-              setSelectedWindowType(event.target.value as WindowDefinition["type"])
-            }
-          >
-            <option value="calendar_year">Calendar year</option>
-            <option value="fiscal_year">Fiscal/tax year</option>
-            <option value="rolling_days">Rolling days</option>
-          </select>
-        </label>
-        {selectedWindowType !== "calendar_year" && (
-          <div className="rule-window-extra-row">
-            {selectedWindowType === "fiscal_year" && (
-              <>
-                <label>
-                  Fiscal start month
-                  <input
-                    name="startMonth"
-                    type="number"
-                    min="1"
-                    max="12"
-                    defaultValue={startMonth}
-                  />
-                </label>
-                <label>
-                  Fiscal start day
-                  <input name="startDay" type="number" min="1" max="31" defaultValue={startDay} />
-                </label>
-              </>
-            )}
-            {selectedWindowType === "rolling_days" && (
-              <label>
-                Rolling window days
-                <input name="rollingDays" type="number" min="1" defaultValue={rollingDays} />
+        <fieldset className="rule-counting-field">
+          <legend>Counting</legend>
+          <div className="rule-radio-options">
+            {countingOptions.map((counting) => (
+              <label key={counting} className="rule-radio-option">
+                <input
+                  type="radio"
+                  name="counting"
+                  value={counting}
+                  checked={selectedCounting === counting}
+                  onChange={() => setSelectedCounting(counting)}
+                />
+                <span>
+                  <strong>{counting}</strong>
+                  <span>{countingDescriptions[counting]}</span>
+                </span>
               </label>
-            )}
+            ))}
           </div>
-        )}
+        </fieldset>
+        <div className="rule-window-row">
+          <label>
+            Year/window
+            <select
+              name="windowType"
+              value={selectedWindowType}
+              onChange={(event) =>
+                setSelectedWindowType(event.target.value as WindowDefinition["type"])
+              }
+            >
+              <option value="calendar_year">Calendar year</option>
+              <option value="fiscal_year">Fiscal/tax year</option>
+              <option value="rolling_days">Rolling days</option>
+            </select>
+          </label>
+          {selectedWindowType === "fiscal_year" && (
+            <>
+              <label>
+                Fiscal start month
+                <input
+                  name="startMonth"
+                  type="number"
+                  min="1"
+                  max="12"
+                  defaultValue={startMonth}
+                />
+              </label>
+              <label>
+                Fiscal start day
+                <input name="startDay" type="number" min="1" max="31" defaultValue={startDay} />
+              </label>
+            </>
+          )}
+          {selectedWindowType === "rolling_days" && (
+            <label>
+              Rolling window days
+              <input name="rollingDays" type="number" min="1" defaultValue={rollingDays} />
+            </label>
+          )}
+        </div>
       </div>
       <div className="button-row">
         <button type="submit">
