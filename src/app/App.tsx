@@ -691,15 +691,15 @@ export function App() {
       });
   };
 
-  const upsertRule = (form: HTMLFormElement, ruleId?: string): void => {
+  const upsertRule = (form: HTMLFormElement, ruleId?: string): boolean => {
     if (!data) {
-      return;
+      return false;
     }
     const formData = new FormData(form);
     const countries = normalizeCountryScope(formData.get("countryScope"));
     if (countries.length === 0) {
       setMessage("Add at least one country code for the target.");
-      return;
+      return false;
     }
     const nextRule: Rule = {
       id: ruleId ?? createId("rule"),
@@ -713,7 +713,7 @@ export function App() {
     };
     if (hasEquivalentRule(data.rules, nextRule, ruleId)) {
       setMessage("That target already exists.");
-      return;
+      return false;
     }
     const rules = ruleId
       ? data.rules.map((rule) => (rule.id === ruleId ? nextRule : rule))
@@ -721,6 +721,7 @@ export function App() {
     void saveData({ ...data, rules }, ruleId ? "Target updated." : "Target added.");
     setActiveView("targets");
     form.reset();
+    return true;
   };
 
   const deleteRule = (ruleId: string): void => {
@@ -1367,10 +1368,25 @@ function TargetEditor({
   onAddSuggestion
 }: {
   rules: Rule[];
-  onSaveRule: (form: HTMLFormElement, ruleId?: string) => void;
+  onSaveRule: (form: HTMLFormElement, ruleId?: string) => boolean;
   onDeleteRule: (ruleId: string) => void;
   onAddSuggestion: (suggestion: (typeof ruleSuggestions)[number]) => void;
 }) {
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [showNewRuleForm, setShowNewRuleForm] = useState(false);
+
+  const saveExistingRule = (form: HTMLFormElement, ruleId: string): void => {
+    if (onSaveRule(form, ruleId)) {
+      setEditingRuleId(null);
+    }
+  };
+
+  const saveNewRule = (form: HTMLFormElement): void => {
+    if (onSaveRule(form)) {
+      setShowNewRuleForm(false);
+    }
+  };
+
   return (
     <section className="panel target-editor">
       <div className="panel-title-row">
@@ -1397,27 +1413,106 @@ function TargetEditor({
       </div>
       <div className="rule-list">
         {rules.map((rule) => (
-          <RuleForm
-            key={rule.id}
-            rule={rule}
-            onSave={(form) => onSaveRule(form, rule.id)}
-            onDelete={() => onDeleteRule(rule.id)}
-          />
+          editingRuleId === rule.id ? (
+            <RuleForm
+              key={rule.id}
+              rule={rule}
+              onSave={(form) => saveExistingRule(form, rule.id)}
+              onDelete={() => {
+                onDeleteRule(rule.id);
+                setEditingRuleId(null);
+              }}
+              onCancel={() => setEditingRuleId(null)}
+            />
+          ) : (
+            <RuleSummary
+              key={rule.id}
+              rule={rule}
+              onEdit={() => setEditingRuleId(rule.id)}
+              onDelete={() => onDeleteRule(rule.id)}
+            />
+          )
         ))}
       </div>
-      <RuleForm onSave={(form) => onSaveRule(form)} />
+      {showNewRuleForm ? (
+        <RuleForm onSave={saveNewRule} onCancel={() => setShowNewRuleForm(false)} />
+      ) : (
+        <button
+          type="button"
+          className="secondary add-custom-target"
+          onClick={() => setShowNewRuleForm(true)}
+        >
+          <Plus size={15} /> Add custom target
+        </button>
+      )}
     </section>
   );
+}
+
+function RuleSummary({
+  rule,
+  onEdit,
+  onDelete
+}: {
+  rule: Rule;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <article className="rule-summary-row">
+      <span className="rule-summary-copy">
+        <strong>{rule.label}</strong>
+        <small>{rule.description || formatRuleWindowConfig(rule.window)}</small>
+      </span>
+      <span className="rule-summary-meta">
+        <span>{rule.countryScope.join(", ")}</span>
+        <span>
+          {rule.direction === "minimum" ? "minimum" : "ceiling"} {rule.threshold}
+        </span>
+        <span>{formatRuleWindowConfig(rule.window)}</span>
+      </span>
+      <span className="rule-summary-actions">
+        <button
+          type="button"
+          className="secondary"
+          onClick={onEdit}
+          aria-label={`Edit ${rule.label}`}
+        >
+          <Edit3 size={14} /> Edit
+        </button>
+        <button
+          type="button"
+          className="danger-button"
+          onClick={onDelete}
+          aria-label={`Delete ${rule.label}`}
+        >
+          <Trash2 size={14} /> Delete
+        </button>
+      </span>
+    </article>
+  );
+}
+
+function formatRuleWindowConfig(window: WindowDefinition): string {
+  if (window.type === "fiscal_year") {
+    return `Fiscal year from ${window.startMonth}/${window.startDay}`;
+  }
+  if (window.type === "rolling_days") {
+    return `${window.days}-day rolling window`;
+  }
+  return "Calendar year";
 }
 
 function RuleForm({
   rule,
   onSave,
-  onDelete
+  onDelete,
+  onCancel
 }: {
   rule?: Rule;
   onSave: (form: HTMLFormElement) => void;
   onDelete?: () => void;
+  onCancel?: () => void;
 }) {
   const windowType = rule?.window.type ?? "calendar_year";
   const startMonth = rule?.window.type === "fiscal_year" ? rule.window.startMonth : 1;
@@ -1511,28 +1606,45 @@ function RuleForm({
             <option value="rolling_days">Rolling days</option>
           </select>
         </label>
-        {selectedWindowType === "fiscal_year" && (
-          <>
-            <label>
-              Fiscal start month
-              <input name="startMonth" type="number" min="1" max="12" defaultValue={startMonth} />
-            </label>
-            <label>
-              Fiscal start day
-              <input name="startDay" type="number" min="1" max="31" defaultValue={startDay} />
-            </label>
-          </>
-        )}
-        {selectedWindowType === "rolling_days" && (
-          <label>
-            Rolling window days
-            <input name="rollingDays" type="number" min="1" defaultValue={rollingDays} />
-          </label>
+        {selectedWindowType !== "calendar_year" && (
+          <div className="rule-window-extra-row">
+            {selectedWindowType === "fiscal_year" && (
+              <>
+                <label>
+                  Fiscal start month
+                  <input
+                    name="startMonth"
+                    type="number"
+                    min="1"
+                    max="12"
+                    defaultValue={startMonth}
+                  />
+                </label>
+                <label>
+                  Fiscal start day
+                  <input name="startDay" type="number" min="1" max="31" defaultValue={startDay} />
+                </label>
+              </>
+            )}
+            {selectedWindowType === "rolling_days" && (
+              <label>
+                Rolling window days
+                <input name="rollingDays" type="number" min="1" defaultValue={rollingDays} />
+              </label>
+            )}
+          </div>
         )}
       </div>
-      <button type="submit">
-        <Save size={15} /> {rule ? "Save target" : "Add target"}
-      </button>
+      <div className="button-row">
+        <button type="submit">
+          <Save size={15} /> {rule ? "Save target" : "Add target"}
+        </button>
+        {onCancel && (
+          <button type="button" className="secondary" onClick={onCancel}>
+            <X size={15} /> Cancel
+          </button>
+        )}
+      </div>
     </form>
   );
 }

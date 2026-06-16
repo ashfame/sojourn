@@ -707,6 +707,61 @@ button.secondary.active {
   gap: 0.75rem;
 }
 
+.rule-summary-row {
+  border: 1px solid #ece7dc;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.72rem;
+  display: grid;
+  grid-template-columns: minmax(10rem, 1.2fr) minmax(16rem, 1.7fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.rule-summary-copy {
+  min-width: 0;
+  display: grid;
+  gap: 0.12rem;
+}
+
+.rule-summary-copy strong {
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.rule-summary-copy small {
+  color: #77746b;
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.rule-summary-meta {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.rule-summary-meta span {
+  border: 1px solid #ece7dc;
+  border-radius: 999px;
+  background: #fffaf0;
+  padding: 0.18rem 0.48rem;
+  color: #625f56;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.rule-summary-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.add-custom-target {
+  justify-self: start;
+}
+
 .rule-form {
   border: 1px solid #ece7dc;
   border-radius: 8px;
@@ -749,6 +804,13 @@ button.secondary.active {
 
 .rule-counting-field {
   grid-column: span 8;
+}
+
+.rule-window-extra-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
 }
 
 .checkbox-label {
@@ -907,8 +969,22 @@ button.secondary.active {
   }
 
   .suggestion-row button,
-  .target-actions button {
+  .target-actions button,
+  .add-custom-target {
     width: 100%;
+  }
+
+  .rule-summary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-summary-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rule-window-extra-row {
+    grid-template-columns: 1fr;
   }
 
   .rule-form-grid > label,

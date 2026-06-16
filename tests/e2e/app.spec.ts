@@ -33,6 +33,7 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.getByText("11 days unaccounted for")).toBeVisible();
 
   await page.getByRole("button", { name: "Targets", exact: true }).click();
+  await page.getByRole("button", { name: "Edit India under 60" }).click();
   const indiaTarget = page.locator("form.rule-form").filter({ hasText: "India under 60" });
   await indiaTarget.getByLabel("Max or target days").fill("58");
   await indiaTarget.getByRole("button", { name: /Save target/ }).click();
@@ -57,8 +58,7 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await page.getByRole("button", { name: "Targets", exact: true }).click();
   await page.getByRole("button", { name: "India: under 120" }).click();
   await expect(page.getByText("Suggested target added.")).toBeVisible();
-  const indiaUnder120 = page.locator("form.rule-form").filter({ hasText: "India under 120" });
-  await indiaUnder120.getByRole("button", { name: /Delete/ }).click();
+  await page.getByRole("button", { name: "Delete India under 120" }).click();
   await expect(page.getByText("Target deleted.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "India under 120" })).not.toBeVisible();
 
