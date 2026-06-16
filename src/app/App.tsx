@@ -96,9 +96,9 @@ const ruleSuggestions: Array<{
   build: () => Omit<Rule, "id">;
 }> = [
   {
-    label: "UAE: 183 minimum",
+    label: "UAE: 183 Minimum",
     build: () => ({
-      label: "UAE tax residency",
+      label: "UAE Tax Residency",
       countryScope: ["AE"],
       threshold: 183,
       direction: "minimum",
@@ -108,9 +108,9 @@ const ruleSuggestions: Array<{
     })
   },
   {
-    label: "India: under 60",
+    label: "India: Under 60",
     build: () => ({
-      label: "India under 60",
+      label: "India Under 60",
       countryScope: ["IN"],
       threshold: 59,
       direction: "ceiling",
@@ -120,9 +120,9 @@ const ruleSuggestions: Array<{
     })
   },
   {
-    label: "India: under 120",
+    label: "India: Under 120",
     build: () => ({
-      label: "India under 120",
+      label: "India Under 120",
       countryScope: ["IN"],
       threshold: 119,
       direction: "ceiling",
@@ -132,9 +132,9 @@ const ruleSuggestions: Array<{
     })
   },
   {
-    label: "India: under 183",
+    label: "India: Under 183",
     build: () => ({
-      label: "India under 183",
+      label: "India Under 183",
       countryScope: ["IN"],
       threshold: 182,
       direction: "ceiling",
@@ -255,11 +255,22 @@ const countingDescriptions: Record<CountingConvention, string> = {
     "Counts any date touched by the stay. With date-only stays this matches inclusive counting."
 };
 
+const countingLabels: Record<CountingConvention, string> = {
+  entry_exit_count: "Arrival and Departure Dates",
+  exclude_exit_day: "Exclude Departure Date",
+  presence_any_part: "Any Date Touched"
+};
+
 const countingOptions: CountingConvention[] = [
   "entry_exit_count",
   "exclude_exit_day",
   "presence_any_part"
 ];
+
+const ruleDirectionLabels: Record<RuleDirection, string> = {
+  ceiling: "Ceiling",
+  minimum: "Minimum"
+};
 
 type TimelineRenderItem =
   | { type: "year"; id: string; year: string }
@@ -709,7 +720,7 @@ export function App() {
     }
     const nextRule: Rule = {
       id: ruleId ?? createId("rule"),
-      label: String(formData.get("label") || "Custom target").trim(),
+      label: String(formData.get("label") || "Custom Target").trim(),
       countryScope: countries,
       threshold: numberFromForm(formData, "threshold", 1),
       direction: String(formData.get("direction")) as RuleDirection,
@@ -1054,7 +1065,9 @@ function TargetCard({ progress }: { progress: RuleProgress }) {
     <article className={`target-card ${progress.tone}`}>
       <div className="target-title-row">
         <h2>{progress.rule.label}</h2>
-        <span className={`rule-badge ${progress.rule.direction}`}>{progress.rule.direction}</span>
+        <span className={`rule-badge ${progress.rule.direction}`}>
+          {ruleDirectionLabels[progress.rule.direction]}
+        </span>
       </div>
       <p>{progress.rule.description}</p>
       <div className="progress-track" aria-hidden="true">
@@ -1448,7 +1461,7 @@ function TargetEditor({
           className="secondary add-custom-target"
           onClick={() => setShowNewRuleForm(true)}
         >
-          <Plus size={15} /> Add custom target
+          <Plus size={15} /> Add Custom Target
         </button>
       )}
     </section>
@@ -1473,7 +1486,7 @@ function RuleSummary({
       <span className="rule-summary-meta">
         <span>{rule.countryScope.join(", ")}</span>
         <span>
-          {rule.direction === "minimum" ? "minimum" : "ceiling"} {rule.threshold}
+          {ruleDirectionLabels[rule.direction]} {rule.threshold}
         </span>
         <span>{formatRuleWindowConfig(rule.window)}</span>
       </span>
@@ -1501,12 +1514,12 @@ function RuleSummary({
 
 function formatRuleWindowConfig(window: WindowDefinition): string {
   if (window.type === "fiscal_year") {
-    return `Fiscal year from ${window.startMonth}/${window.startDay}`;
+    return `Fiscal Year from ${window.startMonth}/${window.startDay}`;
   }
   if (window.type === "rolling_days") {
-    return `${window.days}-day rolling window`;
+    return `${window.days}-Day Rolling Window`;
   }
-  return "Calendar year";
+  return "Calendar Year";
 }
 
 function RuleForm({
@@ -1539,7 +1552,7 @@ function RuleForm({
       }}
     >
       <div className="rule-form-heading">
-        <strong>{rule ? rule.label : "Add custom target"}</strong>
+        <strong>{rule ? rule.label : "Add Custom Target"}</strong>
         {rule && onDelete && (
           <button type="button" className="danger-button" onClick={onDelete}>
             <Trash2 size={14} /> Delete
@@ -1549,7 +1562,7 @@ function RuleForm({
       <div className="rule-form-grid">
         <label className="rule-label-field">
           Label
-          <input name="label" defaultValue={rule?.label ?? ""} placeholder="India under 60" />
+          <input name="label" defaultValue={rule?.label ?? ""} placeholder="India Under 60" />
         </label>
         <label className="rule-countries-field">
           Countries
@@ -1571,12 +1584,12 @@ function RuleForm({
         <label>
           Direction
           <select name="direction" defaultValue={rule?.direction ?? "ceiling"}>
-            <option value="ceiling">Ceiling / budget</option>
-            <option value="minimum">Minimum / target</option>
+            <option value="ceiling">Ceiling / Budget</option>
+            <option value="minimum">Minimum / Target</option>
           </select>
         </label>
         <label>
-          Max or target days
+          Max or Target Days
           <input
             name="threshold"
             type="number"
@@ -1598,7 +1611,7 @@ function RuleForm({
                   onChange={() => setSelectedCounting(counting)}
                 />
                 <span>
-                  <strong>{counting}</strong>
+                  <strong>{countingLabels[counting]}</strong>
                   <span>{countingDescriptions[counting]}</span>
                 </span>
               </label>
@@ -1607,7 +1620,7 @@ function RuleForm({
         </fieldset>
         <div className="rule-window-row">
           <label>
-            Year/window
+            Year/Window
             <select
               name="windowType"
               value={selectedWindowType}
@@ -1615,15 +1628,15 @@ function RuleForm({
                 setSelectedWindowType(event.target.value as WindowDefinition["type"])
               }
             >
-              <option value="calendar_year">Calendar year</option>
-              <option value="fiscal_year">Fiscal/tax year</option>
-              <option value="rolling_days">Rolling days</option>
+              <option value="calendar_year">Calendar Year</option>
+              <option value="fiscal_year">Fiscal/Tax Year</option>
+              <option value="rolling_days">Rolling Days</option>
             </select>
           </label>
           {selectedWindowType === "fiscal_year" && (
             <>
               <label>
-                Fiscal start month
+                Fiscal Start Month
                 <input
                   name="startMonth"
                   type="number"
@@ -1633,14 +1646,14 @@ function RuleForm({
                 />
               </label>
               <label>
-                Fiscal start day
+                Fiscal Start Day
                 <input name="startDay" type="number" min="1" max="31" defaultValue={startDay} />
               </label>
             </>
           )}
           {selectedWindowType === "rolling_days" && (
             <label>
-              Rolling window days
+              Rolling Window Days
               <input name="rollingDays" type="number" min="1" defaultValue={rollingDays} />
             </label>
           )}
@@ -1648,7 +1661,7 @@ function RuleForm({
       </div>
       <div className="button-row">
         <button type="submit">
-          <Save size={15} /> {rule ? "Save target" : "Add target"}
+          <Save size={15} /> {rule ? "Save Target" : "Add Target"}
         </button>
         {onCancel && (
           <button type="button" className="secondary" onClick={onCancel}>

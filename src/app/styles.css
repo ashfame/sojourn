@@ -795,7 +795,7 @@ button.secondary.active {
   gap: 0.65rem;
 }
 
-.rule-form-grid > label {
+.rule-form-grid > :where(label) {
   grid-column: span 1;
 }
 

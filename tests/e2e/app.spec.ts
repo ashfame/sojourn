@@ -9,9 +9,9 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.getByRole("button", { name: /Export archive/ })).not.toBeVisible();
 
   await page.getByRole("button", { name: "Targets", exact: true }).click();
-  await page.getByRole("button", { name: "India: under 60" }).click();
+  await page.getByRole("button", { name: "India: Under 60" }).click();
   await expect(page.getByText("Suggested target added.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "India under 60" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "India Under 60" })).toBeVisible();
   await expect(page.getByLabel("Suggested targets").getByRole("button", { name: "Added" })).toHaveCount(1);
 
   await page.getByRole("button", { name: /Add stay/ }).click();
@@ -33,10 +33,11 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.getByText("11 days unaccounted for")).toBeVisible();
 
   await page.getByRole("button", { name: "Targets", exact: true }).click();
-  await page.getByRole("button", { name: "Edit India under 60" }).click();
-  const indiaTarget = page.locator("form.rule-form").filter({ hasText: "India under 60" });
-  await indiaTarget.getByLabel("Max or target days").fill("58");
-  await indiaTarget.getByRole("button", { name: /Save target/ }).click();
+  await page.getByRole("button", { name: "Edit India Under 60" }).click();
+  const indiaTarget = page.locator("form.rule-form").filter({ hasText: "India Under 60" });
+  await expect(indiaTarget.getByText("Arrival and Departure Dates")).toBeVisible();
+  await indiaTarget.getByLabel("Max or Target Days").fill("58");
+  await indiaTarget.getByRole("button", { name: /Save Target/ }).click();
   await expect(page.getByText("Target updated.")).toBeVisible();
   await expect(page.getByText("12 of 58 days used")).toBeVisible();
 
@@ -56,11 +57,11 @@ test("sets up targets, tracks stays, shows gaps, and manages data panels", async
   await expect(page.getByText("24 of 58 days used")).toBeVisible();
 
   await page.getByRole("button", { name: "Targets", exact: true }).click();
-  await page.getByRole("button", { name: "India: under 120" }).click();
+  await page.getByRole("button", { name: "India: Under 120" }).click();
   await expect(page.getByText("Suggested target added.")).toBeVisible();
-  await page.getByRole("button", { name: "Delete India under 120" }).click();
+  await page.getByRole("button", { name: "Delete India Under 120" }).click();
   await expect(page.getByText("Target deleted.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "India under 120" })).not.toBeVisible();
+  await expect(page.getByRole("heading", { name: "India Under 120" })).not.toBeVisible();
 
   await page.getByRole("button", { name: "Timeline", exact: true }).click();
   await page.getByRole("button", { name: /Family visit/ }).click();
