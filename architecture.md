@@ -29,7 +29,8 @@ locally in the user's browser.
 ## Module Map
 
 - `src/domain/types.ts`: canonical TypeScript data model.
-- `src/domain/dates.ts`: UTC date-only helpers.
+- `src/domain/dates.ts`: UTC date-only helpers plus browser-local current-day
+  helpers.
 - `src/domain/countries.ts`: known country labels, flags, and Schengen country
   set used by suggestions.
 - `src/domain/evidence.ts`: evidence type labels and completeness scoring.
@@ -78,6 +79,8 @@ driven by each rule's `counting` value.
 
 Dates are stored as `YYYY-MM-DD` strings and interpreted with UTC date helpers.
 This avoids local timezone shifts in date-only residency calculations.
+The live `asOf` date for active stays is derived from the browser's local
+calendar date, so ongoing stays advance when the user's local day changes.
 
 ## Storage
 
@@ -330,9 +333,9 @@ View-only:
 - hidden import input ref
 
 On mount, the app loads through the storage driver. It also schedules an `asOf`
-refresh for the next UTC day, and refreshes when the window regains focus or
-visibility. This keeps active-stay counts current without requiring a page
-reload.
+refresh for the next browser-local day, and refreshes when the window regains
+focus or visibility. This keeps active-stay counts current without requiring a
+page reload.
 
 Main views:
 

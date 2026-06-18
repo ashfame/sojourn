@@ -74,7 +74,7 @@ VITE_BASE_PATH=/sojourn/ npm run build:static
 - First run has no demo stays, evidence, or targets.
 - When no targets exist, the app opens the target setup panel and offers suggested templates.
 - A stay with no exit date is treated as active and counts through today; the app refreshes the
-  active day count when the date changes.
+  active day count when the browser's local date changes.
 - If a stored stay has a future exit date, targets still count it only through today. Use
   Projection to model future days.
 - Each stay expands inline to show evidence.

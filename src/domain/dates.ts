@@ -1,6 +1,7 @@
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const padDatePart = (value: number): string => String(value).padStart(2, "0");
 
 export const assertDateString = (value: string): string => {
   if (!datePattern.test(value)) {
@@ -17,18 +18,13 @@ export const toUtcDate = (value: string): Date => {
 
 export const toDateString = (date: Date): string => date.toISOString().slice(0, 10);
 
-export const todayString = (): string => toDateString(new Date());
+export const todayString = (date = new Date()): string =>
+  `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
 
-export const millisecondsUntilNextUtcDay = (date = new Date()): number => {
-  const nextDay = Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate() + 1,
-    0,
-    0,
-    1
-  );
-  return Math.max(1000, nextDay - date.getTime());
+export const millisecondsUntilNextLocalDay = (date = new Date()): number => {
+  const nextDay = new Date(date);
+  nextDay.setHours(24, 0, 1, 0);
+  return Math.max(1000, nextDay.getTime() - date.getTime());
 };
 
 export const addDays = (value: string, days: number): string =>

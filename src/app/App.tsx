@@ -36,7 +36,7 @@ import {
   formatDateRange,
   isAfter,
   isBefore,
-  millisecondsUntilNextUtcDay,
+  millisecondsUntilNextLocalDay,
   todayString
 } from "../domain/dates";
 import { evidenceLabel } from "../domain/evidence";
@@ -359,7 +359,7 @@ export function App() {
       timeoutId = window.setTimeout(() => {
         refreshAsOf();
         scheduleNextRefresh();
-      }, millisecondsUntilNextUtcDay());
+      }, millisecondsUntilNextLocalDay());
     };
     const refreshWhenVisible = (): void => {
       if (document.visibilityState !== "hidden") {
