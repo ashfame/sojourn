@@ -413,6 +413,75 @@ describe("rule engine", () => {
     expect(schengen?.windowLabel).toBe("180-day rolling window");
   });
 
+  it("dedupes transfer days within one multi-country rule while separate country rules count independently", () => {
+    const data: AppData = {
+      ...createInitialData(),
+      rules: [
+        {
+          id: "rule_schengen_transfer",
+          label: "Schengen transfer",
+          countryScope: ["ES", "PL"],
+          threshold: 90,
+          direction: "ceiling",
+          window: { type: "rolling_days", days: 180 },
+          counting: "entry_exit_count",
+          description: "Multi-country Schengen-style target"
+        },
+        {
+          id: "rule_spain_only",
+          label: "Spain only",
+          countryScope: ["ES"],
+          threshold: 183,
+          direction: "ceiling",
+          window: { type: "calendar_year" },
+          counting: "entry_exit_count",
+          description: "Country-specific target"
+        },
+        {
+          id: "rule_poland_only",
+          label: "Poland only",
+          countryScope: ["PL"],
+          threshold: 183,
+          direction: "ceiling",
+          window: { type: "calendar_year" },
+          counting: "entry_exit_count",
+          description: "Country-specific target"
+        }
+      ],
+      stays: [
+        {
+          id: "stay_spain_transfer",
+          country: "ES",
+          entryDate: "2026-06-01",
+          exitDate: "2026-06-10",
+          label: "Spain",
+          createdAt: "2026-06-01T00:00:00.000Z",
+          updatedAt: "2026-06-01T00:00:00.000Z"
+        },
+        {
+          id: "stay_poland_transfer",
+          country: "PL",
+          entryDate: "2026-06-10",
+          exitDate: "2026-06-20",
+          label: "Poland",
+          createdAt: "2026-06-10T00:00:00.000Z",
+          updatedAt: "2026-06-10T00:00:00.000Z"
+        }
+      ]
+    };
+
+    const progress = progressByRule(data, "2026-06-20");
+
+    // Transfer days can count for both departure and arrival jurisdictions when those
+    // countries are evaluated by separate rules.
+    expect(progress.get("rule_spain_only")?.usedDays).toBe(10);
+    expect(progress.get("rule_poland_only")?.usedDays).toBe(11);
+
+    // A Schengen-style target asks for total presence inside one country scope, so the
+    // shared Jun 10 transfer day is counted once instead of once per Schengen country.
+    expect(progress.get("rule_schengen_transfer")?.usedDays).toBe(20);
+  });
+
   it("uses the same rules for future projections", () => {
     const data = sampleData();
     const projected = projectionStay({
