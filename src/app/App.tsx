@@ -169,6 +169,16 @@ const formatSavedAt = (value?: string): string => {
   }).format(new Date(value));
 };
 
+const storageBackendLabel = (backend: StorageMetadata["backend"]): string => {
+  if (backend === "indexeddb") {
+    return "IndexedDB";
+  }
+  if (backend === "remote_sqlite") {
+    return "Remote SQLite";
+  }
+  return "Memory";
+};
+
 const downloadBlob = (blob: Blob, filename: string): void => {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -1006,8 +1016,10 @@ export function App() {
           </form>
           <div className="storage-row">
             <span>
-              Built from: {__SOJOURN_BUILD_COMMIT__} · Saved in {metadata.backend} · revision {metadata.revision ?? 1} ·{" "}
-               {formatSavedAt(metadata.savedAt)}
+              Built from: {__SOJOURN_BUILD_COMMIT__}
+              <br />
+              Saved in {storageBackendLabel(metadata.backend)} · revision {metadata.revision ?? 1} ·{" "}
+              {formatSavedAt(metadata.savedAt)}
             </span>
             <div className="storage-actions">
               <button
