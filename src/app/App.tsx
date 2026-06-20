@@ -1898,17 +1898,17 @@ function PassportPageForm({
         </select>
       </label>
       <label>
+        File
+        <input name="file" type="file" accept="image/*,application/pdf" required={!page} />
+        {page?.fileName && <span className="field-help">Current file: {page.fileName}</span>}
+      </label>
+      <label>
         Label
         <input name="label" defaultValue={page?.label ?? ""} placeholder="Front, last, visa page" />
       </label>
       <label>
         Page
         <input name="pageNumber" defaultValue={page?.pageNumber ?? ""} placeholder="Number or identifier" />
-      </label>
-      <label>
-        File
-        <input name="file" type="file" accept="image/*,application/pdf" required={!page} />
-        {page?.fileName && <span className="field-help">Current file: {page.fileName}</span>}
       </label>
       <div className="button-row">
         <button type="submit">

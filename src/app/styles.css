@@ -1080,18 +1080,23 @@ button.secondary.active {
   min-height: 0;
   background: #ebe7dd;
   display: grid;
+  place-items: center;
+  overflow: hidden;
 }
 
-.preview-modal-body iframe,
-.preview-modal-body img {
+.preview-modal-body iframe {
   width: 100%;
   height: 100%;
   border: 0;
 }
 
 .preview-modal-body img {
+  max-width: calc(100% - 1.5rem);
+  max-height: calc(100% - 1.5rem);
+  width: auto;
+  height: auto;
   object-fit: contain;
-  padding: 0.75rem;
+  display: block;
 }
 
 .preview-fallback {
