@@ -31,6 +31,7 @@ import {
   type ChangeEvent,
   type ComponentType
 } from "react";
+import sojournLogo from "./assets/sojourn-logo.svg";
 import { COUNTRY_NAMES, countryFlag, countryName } from "../domain/countries";
 import {
   formatDateRange,
@@ -793,29 +794,13 @@ export function App() {
       <header className="app-header">
         <div>
           <div className="app-brand">
-            <svg
+            <img
               className="app-logo"
-              width="48"
+              src={sojournLogo}
+              alt="Sojourn"
+              width="220"
               height="48"
-              viewBox="0 0 48 48"
-              fill="none"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <path d="M14 29a10 10 0 0 1 20 0" fill="#C2502F" />
-              <line x1="6" y1="29" x2="42" y2="29" stroke="#242921" strokeWidth="2.5" strokeLinecap="round" />
-              <line
-                x1="12"
-                y1="35.5"
-                x2="36"
-                y2="35.5"
-                stroke="#242921"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeDasharray="0.1 6"
-              />
-            </svg>
-            <span>Sojourn</span>
+            />
           </div>
           <p>{timelineSummary(timeline)}</p>
         </div>

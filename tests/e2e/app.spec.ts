@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("sets up targets, tracks stays, shows gaps, and manages data panels", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByText("Sojourn")).toBeVisible();
+  await expect(page.getByRole("img", { name: "Sojourn" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Set up targets" })).toBeVisible();
   await expect(page.getByText("No stays entered yet.")).toBeVisible();
   await expect(page.getByRole("button", { name: /Export archive/ })).not.toBeVisible();

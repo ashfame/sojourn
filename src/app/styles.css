@@ -189,16 +189,13 @@ button.secondary.active {
 .app-brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  color: #242921;
-  font-size: 1.55rem;
-  font-weight: 850;
   line-height: 1;
+  width: min(13.75rem, 100%);
 }
 
 .app-logo {
-  width: 3rem;
-  height: 3rem;
+  width: 100%;
+  height: auto;
   display: block;
   flex: none;
 }
