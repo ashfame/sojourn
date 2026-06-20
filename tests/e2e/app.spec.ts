@@ -198,7 +198,7 @@ test("stores passport pages and resolves passport update prompts", async ({ page
   await page.getByRole("button", { name: "Data", exact: true }).click();
   await expect(passportPanel.getByText("1 update due")).toBeVisible();
   const reviewRow = passportPanel.locator(".passport-review-row").filter({ hasText: "India entry · 2026-06-20" });
-  await reviewRow.getByLabel("Page").fill("23");
+  await reviewRow.getByRole("textbox", { name: "Page" }).fill("23");
   await reviewRow.getByLabel("File").setInputFiles("tests/fixtures/entry-stamp.pdf");
   await reviewRow.getByRole("button", { name: /Upload stamped page/ }).click();
   await expect(page.getByText("Stamped passport page uploaded.")).toBeVisible();
