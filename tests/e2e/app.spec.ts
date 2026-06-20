@@ -164,3 +164,56 @@ test("imports a JSON snapshot into an empty app", async ({ page }) => {
   await expect(page.getByText("5 of 183 days")).toBeVisible();
   await expect(page.getByText("178 days to go")).toBeVisible();
 });
+
+test("stores passport pages and resolves passport update prompts", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Data", exact: true }).click();
+  const passportPanel = page.locator(".passport-panel");
+  await passportPanel.locator("form.passport-form").getByLabel("Country").fill("IN");
+  await passportPanel.locator("form.passport-form").getByLabel("Passport number").fill("Z1234567");
+  await passportPanel.locator("form.passport-form").getByLabel("Label").fill("Current passport");
+  await passportPanel.locator("form.passport-form").getByRole("button", { name: /Add passport/ }).click();
+  await expect(page.getByText("Passport added.")).toBeVisible();
+  await expect(passportPanel.getByText("India · Z1234567")).toBeVisible();
+
+  const passportCard = passportPanel.locator(".passport-card").filter({ hasText: "India · Z1234567" });
+  const pageForm = passportCard.locator("form.passport-page-form");
+  await pageForm.getByLabel("Type").selectOption("front");
+  await pageForm.getByLabel("Label").fill("Front page");
+  await pageForm.getByLabel("File").setInputFiles("tests/fixtures/entry-stamp.pdf");
+  await pageForm.getByRole("button", { name: /Add page/ }).click();
+  await expect(page.getByText("Passport page added.")).toBeVisible();
+  await expect(passportCard.getByText("Front page")).toBeVisible();
+
+  await page.getByRole("button", { name: /Add stay/ }).click();
+  const currentStayForm = page.locator("form.stay-form");
+  await currentStayForm.getByLabel("Country").fill("IN");
+  await currentStayForm.getByLabel("Entry").fill("2026-06-20");
+  await currentStayForm.getByLabel("Exit").fill("2026-06-22");
+  await currentStayForm.getByLabel("Label").fill("Current India stay");
+  await currentStayForm.getByRole("button", { name: /Save stay/ }).click();
+  await expect(page.getByText("Passport records need review.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Data", exact: true }).click();
+  await expect(passportPanel.getByText("1 update due")).toBeVisible();
+  const reviewRow = passportPanel.locator(".passport-review-row").filter({ hasText: "India entry · 2026-06-20" });
+  await reviewRow.getByLabel("Page").fill("23");
+  await reviewRow.getByLabel("File").setInputFiles("tests/fixtures/entry-stamp.pdf");
+  await reviewRow.getByRole("button", { name: /Upload stamped page/ }).click();
+  await expect(page.getByText("Stamped passport page uploaded.")).toBeVisible();
+  await expect(passportPanel.getByText("1 update due")).not.toBeVisible();
+  await expect(passportCard.getByText("Wet stamp IN 2026-06-20 · 23")).toBeVisible();
+
+  await page.getByRole("button", { name: /Add stay/ }).click();
+  const pastStayForm = page.locator("form.stay-form");
+  await pastStayForm.getByLabel("Country").fill("IN");
+  await pastStayForm.getByLabel("Entry").fill("2026-01-02");
+  await pastStayForm.getByLabel("Exit").fill("2026-01-04");
+  await pastStayForm.getByLabel("Label").fill("Backfilled stay");
+  await pastStayForm.getByRole("button", { name: /Save stay/ }).click();
+  await expect(page.getByText("Stay added.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Data", exact: true }).click();
+  await expect(passportPanel.getByText(/update due/)).not.toBeVisible();
+});

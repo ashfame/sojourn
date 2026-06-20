@@ -56,6 +56,10 @@ import type {
   CountingConvention,
   EvidenceItem,
   EvidenceType,
+  PassportDocument,
+  PassportPage,
+  PassportPageKind,
+  PassportUpdateRequest,
   ProjectionInput,
   Rule,
   RuleDirection,
@@ -284,14 +288,64 @@ const ruleDirectionLabels: Record<RuleDirection, string> = {
   minimum: "Minimum"
 };
 
+const passportPageKindLabels: Record<PassportPageKind, string> = {
+  front: "Front",
+  last: "Last",
+  numbered: "Numbered page",
+  custom: "Custom"
+};
+
+const passportPageKinds: PassportPageKind[] = ["front", "last", "numbered", "custom"];
+
+const passportDisplayName = (passport: PassportDocument): string =>
+  `${countryName(passport.country)} · ${passport.number}`;
+
+const passportPageTitle = (page: PassportPage): string =>
+  page.pageNumber ? `${page.label} · ${page.pageNumber}` : page.label;
+
+const normalizePassportPageKind = (value: FormDataEntryValue | null): PassportPageKind => {
+  const kind = String(value ?? "");
+  return passportPageKinds.includes(kind as PassportPageKind) ? (kind as PassportPageKind) : "custom";
+};
+
+const topTimelineStayNeedsPassportReview = (stay: Stay, existingStays: Stay[]): boolean => {
+  const latestEntryDate = existingStays.reduce<string | undefined>((latest, item) => {
+    if (!latest || isAfter(item.entryDate, latest)) {
+      return item.entryDate;
+    }
+    return latest;
+  }, undefined);
+  return !latestEntryDate || !isBefore(stay.entryDate, latestEntryDate);
+};
+
+const passportUpdateRequestForStay = (
+  stay: Stay,
+  existingStays: Stay[],
+  now: string
+): PassportUpdateRequest | undefined => {
+  if (!topTimelineStayNeedsPassportReview(stay, existingStays)) {
+    return undefined;
+  }
+  return {
+    id: createId("passport_update"),
+    stayId: stay.id,
+    country: stay.country,
+    entryDate: stay.entryDate,
+    status: "pending",
+    createdAt: now,
+    updatedAt: now
+  };
+};
+
 type TimelineRenderItem =
   | { type: "year"; id: string; year: string }
   | { type: "stay"; id: string; stay: TimelineStay };
 
 type AppView = "timeline" | "targets" | "projection" | "data";
 
-interface EvidencePreview {
-  item: EvidenceItem;
+interface FilePreview {
+  title: string;
+  fileName?: string | undefined;
   url: string;
   mimeType: string;
 }
@@ -309,11 +363,11 @@ export function App() {
   const [plannedProjections, setPlannedProjections] = useState<ProjectionInput[]>([]);
   const [asOf, setAsOf] = useState(() => todayString());
   const [message, setMessage] = useState<string>("");
-  const [evidencePreview, setEvidencePreview] = useState<EvidencePreview | null>(null);
+  const [filePreview, setFilePreview] = useState<FilePreview | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  const closeEvidencePreview = useCallback((): void => {
-    setEvidencePreview((current) => {
+  const closeFilePreview = useCallback((): void => {
+    setFilePreview((current) => {
       if (current) {
         URL.revokeObjectURL(current.url);
       }
@@ -410,18 +464,27 @@ export function App() {
     return computeRuleProgress(data, ruleAsOfDate(projectedStays, asOf), projectedStays);
   }, [asOf, data, projectedStays]);
   const planProgress = projectionProgress.length > 0 ? projectionProgress : progress;
+  const pendingPassportRequests = useMemo(
+    () =>
+      data
+        ? data.passportUpdateRequests
+            .filter((request) => request.status === "pending")
+            .sort((left, right) => right.entryDate.localeCompare(left.entryDate))
+        : [],
+    [data]
+  );
   useEffect(() => {
-    if (!evidencePreview) {
+    if (!filePreview) {
       return undefined;
     }
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
-        closeEvidencePreview();
+        closeFilePreview();
       }
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [closeEvidencePreview, evidencePreview]);
+  }, [closeFilePreview, filePreview]);
 
   const saveData = async (next: AppData, savedMessage: string): Promise<void> => {
     const stamped = { ...next, updatedAt: new Date().toISOString() };
@@ -465,7 +528,17 @@ export function App() {
       createdAt: now,
       updatedAt: now
     };
-    void saveData({ ...data, stays: [...data.stays, stay] }, "Stay added.");
+    const passportRequest = passportUpdateRequestForStay(stay, data.stays, now);
+    void saveData(
+      {
+        ...data,
+        stays: [...data.stays, stay],
+        passportUpdateRequests: passportRequest
+          ? [...data.passportUpdateRequests, passportRequest]
+          : data.passportUpdateRequests
+      },
+      passportRequest ? "Stay added. Passport records need review." : "Stay added."
+    );
     form.reset();
     setShowStayForm(false);
   };
@@ -547,7 +620,10 @@ export function App() {
           {
             ...data,
             stays: data.stays.filter((item) => item.id !== stay.id),
-            evidence: data.evidence.filter((item) => item.stayId !== stay.id)
+            evidence: data.evidence.filter((item) => item.stayId !== stay.id),
+            passportUpdateRequests: data.passportUpdateRequests.filter(
+              (request) => request.stayId !== stay.id
+            )
           },
           "Stay deleted."
         )
@@ -631,15 +707,37 @@ export function App() {
           setMessage("No file is stored for that evidence item.");
           return;
         }
-        closeEvidencePreview();
-        setEvidencePreview({
-          item,
+        closeFilePreview();
+        setFilePreview({
+          title: item.title,
+          fileName: item.fileName ?? evidenceLabel[item.type],
           url: URL.createObjectURL(blob),
           mimeType: blob.type || item.mimeType || "application/octet-stream"
         });
       })
       .catch((error: unknown) => {
         setMessage(error instanceof Error ? error.message : "Could not open evidence file.");
+      });
+  };
+
+  const openPassportPagePreview = (page: PassportPage): void => {
+    void storage
+      .getPassportPageFile(page)
+      .then((blob) => {
+        if (!blob) {
+          setMessage("No file is stored for that passport page.");
+          return;
+        }
+        closeFilePreview();
+        setFilePreview({
+          title: passportPageTitle(page),
+          fileName: page.fileName ?? passportPageKindLabels[page.kind],
+          url: URL.createObjectURL(blob),
+          mimeType: blob.type || page.mimeType || "application/octet-stream"
+        });
+      })
+      .catch((error: unknown) => {
+        setMessage(error instanceof Error ? error.message : "Could not open passport page.");
       });
   };
 
@@ -679,6 +777,238 @@ export function App() {
       ...fileMeta,
       createdAt: existing?.createdAt ?? new Date().toISOString()
     };
+  };
+
+  const addPassport = (form: HTMLFormElement): void => {
+    if (!data) {
+      return;
+    }
+    const formData = new FormData(form);
+    const country = normalizeCountryCode(String(formData.get("country") ?? ""));
+    const number = String(formData.get("number") ?? "").trim();
+    const label = optionalString(formData.get("label"));
+    if (!country || !number) {
+      setMessage("Add a passport country and number.");
+      return;
+    }
+    if (
+      data.passports.some(
+        (passport) => passport.country === country && passport.number.toLowerCase() === number.toLowerCase()
+      )
+    ) {
+      setMessage("That passport is already saved.");
+      return;
+    }
+    const now = new Date().toISOString();
+    const passport: PassportDocument = {
+      id: createId("passport"),
+      country,
+      number,
+      ...(label ? { label } : {}),
+      createdAt: now,
+      updatedAt: now
+    };
+    void saveData({ ...data, passports: [...data.passports, passport] }, "Passport added.").then(
+      () => form.reset()
+    );
+  };
+
+  const deletePassport = (passport: PassportDocument): void => {
+    if (!data) {
+      return;
+    }
+    const pages = data.passportPages.filter((page) => page.passportId === passport.id);
+    if (
+      pages.length > 0 &&
+      !window.confirm("Delete this passport and its stored page files?")
+    ) {
+      return;
+    }
+    void Promise.all(pages.map((page) => storage.deleteFile(page.blobKey))).then(() =>
+      saveData(
+        {
+          ...data,
+          passports: data.passports.filter((item) => item.id !== passport.id),
+          passportPages: data.passportPages.filter((page) => page.passportId !== passport.id)
+        },
+        "Passport deleted."
+      )
+    );
+  };
+
+  const passportPageFromForm = async (
+    formData: FormData,
+    passportId: string,
+    existing?: PassportPage,
+    defaults?: Partial<Pick<PassportPage, "kind" | "label" | "pageNumber">>
+  ): Promise<PassportPage> => {
+    const id = existing?.id ?? createId("passport_page");
+    const file = formData.get("file");
+    const hasFile = file instanceof File && file.name;
+    if (!hasFile && !existing) {
+      throw new Error("Choose a passport page file.");
+    }
+    const kind = normalizePassportPageKind(
+      formData.get("kind") ?? defaults?.kind ?? existing?.kind ?? null
+    );
+    const pageNumber = optionalString(formData.get("pageNumber")) ?? defaults?.pageNumber;
+    const label =
+      String(formData.get("label") || defaults?.label || existing?.label || passportPageKindLabels[kind]).trim() ||
+      passportPageKindLabels[kind];
+    const now = new Date().toISOString();
+    const blobKey = hasFile ? `passport-pages/${id}` : existing?.blobKey;
+    if (hasFile && blobKey) {
+      await storage.savePassportPageFile(blobKey, file);
+    }
+    const fileMeta =
+      hasFile
+        ? {
+            fileName: file.name,
+            ...(file.type ? { mimeType: file.type } : {}),
+            sizeBytes: file.size,
+            ...(blobKey ? { blobKey } : {})
+          }
+        : {
+            ...(existing?.fileName ? { fileName: existing.fileName } : {}),
+            ...(existing?.mimeType ? { mimeType: existing.mimeType } : {}),
+            ...(existing?.sizeBytes !== undefined ? { sizeBytes: existing.sizeBytes } : {}),
+            ...(blobKey ? { blobKey } : {})
+          };
+    return {
+      id,
+      passportId,
+      kind,
+      label,
+      ...(pageNumber ? { pageNumber } : {}),
+      ...fileMeta,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+  };
+
+  const addPassportPage = (form: HTMLFormElement, passportId: string): void => {
+    if (!data) {
+      return;
+    }
+    const formData = new FormData(form);
+    void passportPageFromForm(formData, passportId)
+      .then((page) =>
+        saveData(
+          { ...data, passportPages: [...data.passportPages, page] },
+          "Passport page added."
+        )
+      )
+      .then(() => form.reset())
+      .catch((error: unknown) => {
+        setMessage(error instanceof Error ? error.message : "Could not add passport page.");
+      });
+  };
+
+  const updatePassportPage = (form: HTMLFormElement, page: PassportPage): void => {
+    if (!data) {
+      return;
+    }
+    const formData = new FormData(form);
+    void passportPageFromForm(formData, page.passportId, page)
+      .then((updated) =>
+        saveData(
+          {
+            ...data,
+            passportPages: data.passportPages.map((item) =>
+              item.id === page.id ? updated : item
+            )
+          },
+          "Passport page updated."
+        )
+      )
+      .catch((error: unknown) => {
+        setMessage(error instanceof Error ? error.message : "Could not update passport page.");
+      });
+  };
+
+  const deletePassportPage = (page: PassportPage): void => {
+    if (!data) {
+      return;
+    }
+    void storage.deleteFile(page.blobKey).then(() =>
+      saveData(
+        {
+          ...data,
+          passportPages: data.passportPages.filter((item) => item.id !== page.id)
+        },
+        "Passport page deleted."
+      )
+    );
+  };
+
+  const markPassportRequestUpToDate = (request: PassportUpdateRequest): void => {
+    if (!data) {
+      return;
+    }
+    const now = new Date().toISOString();
+    void saveData(
+      {
+        ...data,
+        passportUpdateRequests: data.passportUpdateRequests.map((item) =>
+          item.id === request.id
+            ? {
+                ...item,
+                status: "resolved",
+                resolution: "up_to_date",
+                resolvedAt: now,
+                updatedAt: now
+              }
+            : item
+        )
+      },
+      "Passport records marked up-to-date."
+    );
+  };
+
+  const uploadPassportStampPage = (
+    form: HTMLFormElement,
+    request: PassportUpdateRequest
+  ): void => {
+    if (!data) {
+      return;
+    }
+    const formData = new FormData(form);
+    const passportId = String(formData.get("passportId") ?? "");
+    if (!passportId) {
+      setMessage("Choose the passport that received the stamp.");
+      return;
+    }
+    const now = new Date().toISOString();
+    void passportPageFromForm(formData, passportId, undefined, {
+      kind: "numbered",
+      label: `Wet stamp ${request.country} ${request.entryDate}`
+    })
+      .then((page) =>
+        saveData(
+          {
+            ...data,
+            passportPages: [...data.passportPages, page],
+            passportUpdateRequests: data.passportUpdateRequests.map((item) =>
+              item.id === request.id
+                ? {
+                    ...item,
+                    status: "resolved",
+                    passportId,
+                    pageId: page.id,
+                    resolution: "page_uploaded",
+                    resolvedAt: now,
+                    updatedAt: now
+                  }
+                : item
+            )
+          },
+          "Stamped passport page uploaded."
+        )
+      )
+      .then(() => form.reset())
+      .catch((error: unknown) => {
+        setMessage(error instanceof Error ? error.message : "Could not upload passport page.");
+      });
   };
 
   const updateProfile = (form: HTMLFormElement): void => {
@@ -844,6 +1174,11 @@ export function App() {
               onClick={() => setActiveView("data")}
             >
               <Settings size={16} /> Data
+              {pendingPassportRequests.length > 0 && (
+                <span className="nav-badge" aria-hidden="true">
+                  {pendingPassportRequests.length}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -994,77 +1329,92 @@ export function App() {
       )}
 
       {activeView === "data" && (
-        <section className="panel settings-panel">
-          <h2>
-            <Database size={18} /> Data & profile
-          </h2>
-          <form
-            className="settings-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              updateProfile(event.currentTarget);
-            }}
-          >
-            <label>
-              Nationality
-              <CountryCodeField name="nationality" defaultValue={data.settings.nationality} />
-              <span className="field-help">Profile metadata for suggestions, not day counting.</span>
-            </label>
-            <label>
-              Legal residence
-              <CountryCodeField
-                name="legalResidence"
-                defaultValue={data.settings.legalResidence}
-              />
-              <span className="field-help">Profile metadata for suggestions, not day counting.</span>
-            </label>
-            <button type="submit" className="form-submit">
-              <Save size={16} /> Save profile
-            </button>
-          </form>
-          <div className="storage-row">
-            <span>
-              Built from: {__SOJOURN_BUILD_COMMIT__}
-              <br />
-              Saved in {storageBackendLabel(metadata.backend)} · revision {metadata.revision ?? 1} ·{" "}
-              {formatSavedAt(metadata.savedAt)}
-            </span>
-            <div className="storage-actions">
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => importInputRef.current?.click()}
-              >
-                <Upload size={16} /> Import
+        <>
+          <PassportRecordsPanel
+            passports={data.passports}
+            pages={data.passportPages}
+            pendingRequests={pendingPassportRequests}
+            onAddPassport={addPassport}
+            onDeletePassport={deletePassport}
+            onAddPage={addPassportPage}
+            onUpdatePage={updatePassportPage}
+            onDeletePage={deletePassportPage}
+            onViewPage={openPassportPagePreview}
+            onUploadStampPage={uploadPassportStampPage}
+            onMarkUpToDate={markPassportRequestUpToDate}
+          />
+          <section className="panel settings-panel">
+            <h2>
+              <Database size={18} /> Data & profile
+            </h2>
+            <form
+              className="settings-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                updateProfile(event.currentTarget);
+              }}
+            >
+              <label>
+                Nationality
+                <CountryCodeField name="nationality" defaultValue={data.settings.nationality} />
+                <span className="field-help">Profile metadata for suggestions, not day counting.</span>
+              </label>
+              <label>
+                Legal residence
+                <CountryCodeField
+                  name="legalResidence"
+                  defaultValue={data.settings.legalResidence}
+                />
+                <span className="field-help">Profile metadata for suggestions, not day counting.</span>
+              </label>
+              <button type="submit" className="form-submit">
+                <Save size={16} /> Save profile
               </button>
-              <input
-                ref={importInputRef}
-                aria-label="Import data"
-                className="file-input"
-                type="file"
-                accept="application/json,application/zip,.json,.zip"
-                onChange={(event) => {
-                  importSnapshot(event.currentTarget.files?.[0]);
-                  event.currentTarget.value = "";
-                }}
-              />
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  void storage
-                    .exportData(data)
-                    .then((blob) => downloadBlob(blob, "sojourn-export.zip"));
-                }}
-              >
-                <ArchiveIcon size={16} /> Export archive
-              </button>
+            </form>
+            <div className="storage-row">
+              <span>
+                Built from: {__SOJOURN_BUILD_COMMIT__}
+                <br />
+                Saved in {storageBackendLabel(metadata.backend)} · revision {metadata.revision ?? 1} ·{" "}
+                {formatSavedAt(metadata.savedAt)}
+              </span>
+              <div className="storage-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  <Upload size={16} /> Import
+                </button>
+                <input
+                  ref={importInputRef}
+                  aria-label="Import data"
+                  className="file-input"
+                  type="file"
+                  accept="application/json,application/zip,.json,.zip"
+                  onChange={(event) => {
+                    importSnapshot(event.currentTarget.files?.[0]);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    void storage
+                      .exportData(data)
+                      .then((blob) => downloadBlob(blob, "sojourn-export.zip"));
+                  }}
+                >
+                  <ArchiveIcon size={16} /> Export archive
+                </button>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </>
       )}
-      {evidencePreview && (
-        <EvidencePreviewModal preview={evidencePreview} onClose={closeEvidencePreview} />
+      {filePreview && (
+        <FilePreviewModal preview={filePreview} onClose={closeFilePreview} />
       )}
     </main>
   );
@@ -1171,18 +1521,18 @@ function TimelineYearMarker({ year }: { year: string }) {
   );
 }
 
-function EvidencePreviewModal({
+function FilePreviewModal({
   preview,
   onClose
 }: {
-  preview: EvidencePreview;
+  preview: FilePreview;
   onClose: () => void;
 }) {
   const isPdf =
-    preview.mimeType === "application/pdf" || preview.item.fileName?.toLowerCase().endsWith(".pdf");
+    preview.mimeType === "application/pdf" || preview.fileName?.toLowerCase().endsWith(".pdf");
   const isImage =
     preview.mimeType.startsWith("image/") ||
-    /\.(png|jpe?g|gif|webp)$/iu.test(preview.item.fileName ?? "");
+    /\.(png|jpe?g|gif|webp)$/iu.test(preview.fileName ?? "");
   return (
     <div className="modal-backdrop" role="presentation">
       <section
@@ -1193,21 +1543,21 @@ function EvidencePreviewModal({
       >
         <div className="preview-modal-header">
           <span>
-            <strong id="evidence-preview-title">{preview.item.title}</strong>
-            <small>{preview.item.fileName ?? evidenceLabel[preview.item.type]}</small>
+            <strong id="evidence-preview-title">{preview.title}</strong>
+            <small>{preview.fileName ?? "Stored file"}</small>
           </span>
           <button type="button" className="icon-button secondary" aria-label="Close preview" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
         <div className="preview-modal-body">
-          {isPdf && <iframe title={preview.item.title} src={preview.url} />}
-          {isImage && !isPdf && <img src={preview.url} alt={preview.item.title} />}
+          {isPdf && <iframe title={preview.title} src={preview.url} />}
+          {isImage && !isPdf && <img src={preview.url} alt={preview.title} />}
           {!isPdf && !isImage && (
             <div className="preview-fallback">
               <FileText size={24} />
               <span>This file type cannot be previewed inline.</span>
-              <a href={preview.url} download={preview.item.fileName ?? preview.item.title}>
+              <a href={preview.url} download={preview.fileName ?? preview.title}>
                 Download file
               </a>
             </div>
@@ -1215,6 +1565,362 @@ function EvidencePreviewModal({
         </div>
       </section>
     </div>
+  );
+}
+
+function PassportRecordsPanel({
+  passports,
+  pages,
+  pendingRequests,
+  onAddPassport,
+  onDeletePassport,
+  onAddPage,
+  onUpdatePage,
+  onDeletePage,
+  onViewPage,
+  onUploadStampPage,
+  onMarkUpToDate
+}: {
+  passports: PassportDocument[];
+  pages: PassportPage[];
+  pendingRequests: PassportUpdateRequest[];
+  onAddPassport: (form: HTMLFormElement) => void;
+  onDeletePassport: (passport: PassportDocument) => void;
+  onAddPage: (form: HTMLFormElement, passportId: string) => void;
+  onUpdatePage: (form: HTMLFormElement, page: PassportPage) => void;
+  onDeletePage: (page: PassportPage) => void;
+  onViewPage: (page: PassportPage) => void;
+  onUploadStampPage: (form: HTMLFormElement, request: PassportUpdateRequest) => void;
+  onMarkUpToDate: (request: PassportUpdateRequest) => void;
+}) {
+  const sortedPassports = useMemo(
+    () =>
+      [...passports].sort((left, right) =>
+        passportDisplayName(left).localeCompare(passportDisplayName(right))
+      ),
+    [passports]
+  );
+
+  return (
+    <section className="panel passport-panel">
+      <div className="panel-title-row">
+        <h2>
+          <IdCard size={18} /> Passports
+        </h2>
+        {pendingRequests.length > 0 && (
+          <span className="pending-badge">
+            {pendingRequests.length} update{pendingRequests.length === 1 ? "" : "s"} due
+          </span>
+        )}
+      </div>
+
+      {pendingRequests.length > 0 && (
+        <div className="passport-review-list" aria-label="Passport record updates">
+          {pendingRequests.map((request) => (
+            <PassportReviewRow
+              key={request.id}
+              request={request}
+              passports={sortedPassports}
+              onUploadStampPage={onUploadStampPage}
+              onMarkUpToDate={onMarkUpToDate}
+            />
+          ))}
+        </div>
+      )}
+
+      <form
+        className="passport-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onAddPassport(event.currentTarget);
+        }}
+      >
+        <label>
+          Country
+          <CountryCodeField name="country" defaultValue="" placeholder="IN" />
+        </label>
+        <label>
+          Passport number
+          <input name="number" placeholder="Passport number" required />
+        </label>
+        <label>
+          Label
+          <input name="label" placeholder="Optional name or series" />
+        </label>
+        <button type="submit" className="form-submit">
+          <Plus size={16} /> Add passport
+        </button>
+      </form>
+
+      {sortedPassports.length > 0 ? (
+        <div className="passport-list">
+          {sortedPassports.map((passport) => (
+            <PassportCard
+              key={passport.id}
+              passport={passport}
+              pages={pages.filter((page) => page.passportId === passport.id)}
+              onDeletePassport={() => onDeletePassport(passport)}
+              onAddPage={(form) => onAddPage(form, passport.id)}
+              onUpdatePage={onUpdatePage}
+              onDeletePage={onDeletePage}
+              onViewPage={onViewPage}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="empty-copy">No passports saved yet.</p>
+      )}
+    </section>
+  );
+}
+
+function PassportReviewRow({
+  request,
+  passports,
+  onUploadStampPage,
+  onMarkUpToDate
+}: {
+  request: PassportUpdateRequest;
+  passports: PassportDocument[];
+  onUploadStampPage: (form: HTMLFormElement, request: PassportUpdateRequest) => void;
+  onMarkUpToDate: (request: PassportUpdateRequest) => void;
+}) {
+  return (
+    <article className="passport-review-row">
+      <div className="passport-review-copy">
+        <CircleAlert size={16} />
+        <span>
+          <strong>{countryName(request.country)} entry · {request.entryDate}</strong>
+          <small>Upload the stamped page or confirm the passport records are current.</small>
+        </span>
+      </div>
+      {passports.length > 0 && (
+        <form
+          className="passport-stamp-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onUploadStampPage(event.currentTarget, request);
+          }}
+        >
+          <label>
+            Passport
+            <select name="passportId" required defaultValue={passports[0]?.id ?? ""}>
+              {passports.map((passport) => (
+                <option key={passport.id} value={passport.id}>
+                  {passportDisplayName(passport)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Type
+            <select name="kind" defaultValue="numbered">
+              {passportPageKinds.map((kind) => (
+                <option key={kind} value={kind}>
+                  {passportPageKindLabels[kind]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Label
+            <input name="label" defaultValue={`Wet stamp ${request.country} ${request.entryDate}`} />
+          </label>
+          <label>
+            Page
+            <input name="pageNumber" placeholder="Number or identifier" />
+          </label>
+          <label>
+            File
+            <input name="file" type="file" accept="image/*,application/pdf" required />
+          </label>
+          <button type="submit">
+            <Upload size={15} /> Upload stamped page
+          </button>
+        </form>
+      )}
+      {passports.length === 0 && (
+        <p className="empty-copy">Add a passport before uploading the stamped page.</p>
+      )}
+      <button type="button" className="secondary" onClick={() => onMarkUpToDate(request)}>
+        <BadgeCheck size={15} /> Mark up-to-date
+      </button>
+    </article>
+  );
+}
+
+function PassportCard({
+  passport,
+  pages,
+  onDeletePassport,
+  onAddPage,
+  onUpdatePage,
+  onDeletePage,
+  onViewPage
+}: {
+  passport: PassportDocument;
+  pages: PassportPage[];
+  onDeletePassport: () => void;
+  onAddPage: (form: HTMLFormElement) => void;
+  onUpdatePage: (form: HTMLFormElement, page: PassportPage) => void;
+  onDeletePage: (page: PassportPage) => void;
+  onViewPage: (page: PassportPage) => void;
+}) {
+  const [editingPageId, setEditingPageId] = useState<string | null>(null);
+  const sortedPages = [...pages].sort((left, right) => {
+    const kindOrder = passportPageKinds.indexOf(left.kind) - passportPageKinds.indexOf(right.kind);
+    if (kindOrder !== 0) {
+      return kindOrder;
+    }
+    return passportPageTitle(left).localeCompare(passportPageTitle(right));
+  });
+
+  return (
+    <article className="passport-card">
+      <div className="passport-card-header">
+        <span className="country-avatar" title={countryName(passport.country)}>
+          {countryFlag(passport.country)}
+        </span>
+        <span>
+          <strong>{passportDisplayName(passport)}</strong>
+          <small>
+            {passport.label ? `${passport.label} · ` : ""}
+            {pages.length} page{pages.length === 1 ? "" : "s"}
+          </small>
+        </span>
+        <button
+          type="button"
+          className="icon-button danger-button"
+          aria-label={`Delete ${passportDisplayName(passport)}`}
+          onClick={onDeletePassport}
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      {sortedPages.length > 0 ? (
+        <div className="passport-page-list">
+          {sortedPages.map((page) =>
+            editingPageId === page.id ? (
+              <PassportPageForm
+                key={page.id}
+                page={page}
+                onSave={(form) => {
+                  onUpdatePage(form, page);
+                  setEditingPageId(null);
+                }}
+                onCancel={() => setEditingPageId(null)}
+              />
+            ) : (
+              <PassportPageRow
+                key={page.id}
+                page={page}
+                onView={() => onViewPage(page)}
+                onEdit={() => setEditingPageId(page.id)}
+                onDelete={() => onDeletePage(page)}
+              />
+            )
+          )}
+        </div>
+      ) : (
+        <p className="empty-copy">No pages uploaded for this passport.</p>
+      )}
+
+      <PassportPageForm onSave={onAddPage} />
+    </article>
+  );
+}
+
+function PassportPageRow({
+  page,
+  onView,
+  onEdit,
+  onDelete
+}: {
+  page: PassportPage;
+  onView: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="passport-page-row">
+      <FileText size={16} />
+      <span>
+        <strong>{passportPageTitle(page)}</strong>
+        <small>
+          {passportPageKindLabels[page.kind]}
+          {page.fileName ? ` · ${page.fileName}` : ""}
+        </small>
+      </span>
+      <div className="evidence-actions">
+        {page.blobKey && (
+          <button type="button" className="icon-button secondary" aria-label={`View ${passportPageTitle(page)}`} onClick={onView}>
+            <Eye size={14} />
+          </button>
+        )}
+        <button type="button" className="icon-button secondary" aria-label={`Edit ${passportPageTitle(page)}`} onClick={onEdit}>
+          <Edit3 size={14} />
+        </button>
+        <button type="button" className="icon-button danger-button" aria-label={`Delete ${passportPageTitle(page)}`} onClick={onDelete}>
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PassportPageForm({
+  page,
+  onSave,
+  onCancel
+}: {
+  page?: PassportPage;
+  onSave: (form: HTMLFormElement) => void;
+  onCancel?: () => void;
+}) {
+  const defaultKind = page?.kind ?? "numbered";
+  return (
+    <form
+      className="passport-page-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave(event.currentTarget);
+      }}
+    >
+      <label>
+        Type
+        <select name="kind" defaultValue={defaultKind}>
+          {passportPageKinds.map((kind) => (
+            <option key={kind} value={kind}>
+              {passportPageKindLabels[kind]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Label
+        <input name="label" defaultValue={page?.label ?? ""} placeholder="Front, last, visa page" />
+      </label>
+      <label>
+        Page
+        <input name="pageNumber" defaultValue={page?.pageNumber ?? ""} placeholder="Number or identifier" />
+      </label>
+      <label>
+        File
+        <input name="file" type="file" accept="image/*,application/pdf" required={!page} />
+        {page?.fileName && <span className="field-help">Current file: {page.fileName}</span>}
+      </label>
+      <div className="button-row">
+        <button type="submit">
+          {page ? <Save size={15} /> : <Upload size={15} />} {page ? "Save page" : "Add page"}
+        </button>
+        {onCancel && (
+          <button type="button" className="secondary" onClick={onCancel}>
+            <X size={15} /> Cancel
+          </button>
+        )}
+      </div>
+    </form>
   );
 }
 

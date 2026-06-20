@@ -98,7 +98,7 @@ describe("indexedDbStorage", () => {
     expect(imported.stays.map((stay) => stay.id)).toEqual(["stay_imported"]);
   });
 
-  it("exports and imports evidence files through an archive", async () => {
+  it("exports and imports stored files through an archive", async () => {
     const storage = createIndexedDbStorage();
     const data = {
       ...createInitialData(),
@@ -125,12 +125,39 @@ describe("indexedDbStorage", () => {
           blobKey: "evidence/evidence_pdf",
           createdAt: "2026-06-01T00:00:00.000Z"
         }
+      ],
+      passports: [
+        {
+          id: "passport_india",
+          country: "IN",
+          number: "Z1234567",
+          createdAt: "2026-06-01T00:00:00.000Z",
+          updatedAt: "2026-06-01T00:00:00.000Z"
+        }
+      ],
+      passportPages: [
+        {
+          id: "passport_page_front",
+          passportId: "passport_india",
+          kind: "front" as const,
+          label: "Front page",
+          fileName: "front.jpg",
+          mimeType: "image/jpeg",
+          sizeBytes: 10,
+          blobKey: "passport-pages/passport_page_front",
+          createdAt: "2026-06-01T00:00:00.000Z",
+          updatedAt: "2026-06-01T00:00:00.000Z"
+        }
       ]
     };
 
     await storage.saveEvidenceFile(
       "evidence/evidence_pdf",
       new Blob(["pdf-data"], { type: "application/pdf" })
+    );
+    await storage.savePassportPageFile(
+      "passport-pages/passport_page_front",
+      new Blob(["image-data"], { type: "image/jpeg" })
     );
     const archive = await storage.exportData(data);
     const parsedArchive = await parseArchive(archive);
@@ -141,6 +168,8 @@ describe("indexedDbStorage", () => {
     );
     const importedEvidence = imported.evidence[0]!;
     const importedFile = await storage.getEvidenceFile(importedEvidence);
+    const importedPassportPage = imported.passportPages[0]!;
+    const importedPassportFile = await storage.getPassportPageFile(importedPassportPage);
 
     expect(archive.type).toBe("application/zip");
     expect(parsedArchive.files).toHaveLength(1);
@@ -150,9 +179,23 @@ describe("indexedDbStorage", () => {
     expect(new TextDecoder().decode(await blobToArrayBuffer(parsedArchive.files[0]!.blob))).toBe(
       "pdf-data"
     );
+    expect(parsedArchive.passportPageFiles).toHaveLength(1);
+    expect(parsedArchive.passportPageFiles[0]?.path).toBe(
+      "passports/in-z1234567_front_front-page_passport-page-front.jpg"
+    );
+    expect(
+      new TextDecoder().decode(await blobToArrayBuffer(parsedArchive.passportPageFiles[0]!.blob))
+    ).toBe("image-data");
     expect(importedEvidence.fileName).toMatch(/^boarding_pass_dxb-boarding-pass_evidence-pdf\.pdf$/);
     expect(importedEvidence.blobKey).toBe("evidence/evidence_pdf");
     expect(new TextDecoder().decode(await blobToArrayBuffer(importedFile!))).toBe("pdf-data");
+    expect(importedPassportPage.fileName).toBe(
+      "in-z1234567_front_front-page_passport-page-front.jpg"
+    );
+    expect(importedPassportPage.blobKey).toBe("passport-pages/passport_page_front");
+    expect(new TextDecoder().decode(await blobToArrayBuffer(importedPassportFile!))).toBe(
+      "image-data"
+    );
   });
 
   it("removes old starter targets during migration", () => {

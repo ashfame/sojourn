@@ -1,5 +1,14 @@
 import { SCHENGEN_COUNTRIES } from "./countries";
-import type { AppData, EvidenceItem, Rule, Stay, WindowDefinition } from "./types";
+import type {
+  AppData,
+  EvidenceItem,
+  PassportDocument,
+  PassportPage,
+  PassportUpdateRequest,
+  Rule,
+  Stay,
+  WindowDefinition
+} from "./types";
 
 const createdAt = "2026-06-10T00:00:00.000Z";
 
@@ -98,7 +107,7 @@ const starterEvidenceIds = new Set(starterEvidence.map((item) => item.id));
 const starterRuleIds = new Set(defaultRules.map((item) => item.id));
 
 export const createInitialData = (): AppData => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   settings: {
     homeBaseCountry: "AE",
     nationality: "IN",
@@ -107,6 +116,9 @@ export const createInitialData = (): AppData => ({
   },
   stays: [],
   evidence: [],
+  passports: [],
+  passportPages: [],
+  passportUpdateRequests: [],
   rules: [],
   updatedAt: new Date().toISOString()
 });
@@ -131,7 +143,12 @@ const ruleSignature = (rule: Rule): string =>
   ].join("|");
 
 export const migrateAppData = (data: AppData): AppData => {
-  let changed = false;
+  const legacy = data as AppData & {
+    passports?: PassportDocument[];
+    passportPages?: PassportPage[];
+    passportUpdateRequests?: PassportUpdateRequest[];
+  };
+  let changed = data.schemaVersion !== 2;
   const removedStarterStayIds = new Set<string>();
   const stays = data.stays.filter((item) => {
     if (starterStayIds.has(item.id)) {
@@ -179,5 +196,23 @@ export const migrateAppData = (data: AppData): AppData => {
     rules.push(rule);
   }
 
-  return changed ? { ...data, stays, evidence, rules } : data;
+  const passports = legacy.passports ?? [];
+  const passportPages = legacy.passportPages ?? [];
+  const passportUpdateRequests = legacy.passportUpdateRequests ?? [];
+  if (!legacy.passports || !legacy.passportPages || !legacy.passportUpdateRequests) {
+    changed = true;
+  }
+
+  return changed
+    ? {
+        ...data,
+        schemaVersion: 2,
+        stays,
+        evidence,
+        passports,
+        passportPages,
+        passportUpdateRequests,
+        rules
+      }
+    : data;
 };

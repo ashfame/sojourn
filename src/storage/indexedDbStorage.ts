@@ -89,6 +89,35 @@ const newerRecord = (
   return right.savedAt > left.savedAt ? right : left;
 };
 
+const saveStoredFile = async (key: string, blob: Blob): Promise<void> => {
+  const db = await getDb();
+  await db.put("files", {
+    key,
+    buffer: await blobToArrayBuffer(blob),
+    type: blob.type,
+    savedAt: new Date().toISOString()
+  });
+};
+
+const getStoredFile = async (
+  item: { blobKey?: string | undefined }
+): Promise<Blob | undefined> => {
+  if (!item.blobKey) {
+    return undefined;
+  }
+  const db = await getDb();
+  const record = await db.get("files", item.blobKey);
+  return record ? new Blob([record.buffer], { type: record.type }) : undefined;
+};
+
+const deleteStoredFile = async (key?: string): Promise<void> => {
+  if (!key) {
+    return;
+  }
+  const db = await getDb();
+  await db.delete("files", key);
+};
+
 export const createIndexedDbStorage = (): StorageDriver => ({
   async load(): Promise<PersistedAppData> {
     const db = await getDb();
@@ -136,7 +165,7 @@ export const createIndexedDbStorage = (): StorageDriver => ({
   },
 
   async exportData(data: AppData): Promise<Blob> {
-    return createArchive(data, async (item) => this.getEvidenceFile(item));
+    return createArchive(data, async (item) => this.getFile(item));
   },
 
   async importData(blob: Blob): Promise<AppData> {
@@ -150,7 +179,6 @@ export const createIndexedDbStorage = (): StorageDriver => ({
     }
     try {
       const archive = await parseArchive(blob);
-      const db = await getDb();
       const data = {
         ...archive.data,
         evidence: archive.data.evidence.map((item) => {
@@ -165,17 +193,34 @@ export const createIndexedDbStorage = (): StorageDriver => ({
             ...(file.mimeType ? { mimeType: file.mimeType } : {}),
             sizeBytes: file.sizeBytes
           };
+        }),
+        passportPages: archive.data.passportPages.map((page) => {
+          const file = archive.passportPageFiles.find(
+            (candidate) => candidate.passportPageId === page.id
+          );
+          if (!file) {
+            return page;
+          }
+          return {
+            ...page,
+            blobKey: `passport-pages/${page.id}`,
+            fileName: file.fileName,
+            ...(file.mimeType ? { mimeType: file.mimeType } : {}),
+            sizeBytes: file.sizeBytes
+          };
         })
       };
       await Promise.all(
-        archive.files.map(async (file) =>
-          db.put("files", {
+        [
+          ...archive.files.map((file) => ({
             key: `evidence/${file.evidenceId}`,
-            buffer: await blobToArrayBuffer(file.blob),
-            type: file.blob.type,
-            savedAt: new Date().toISOString()
-          })
-        )
+            blob: file.blob
+          })),
+          ...archive.passportPageFiles.map((file) => ({
+            key: `passport-pages/${file.passportPageId}`,
+            blob: file.blob
+          }))
+        ].map(async (file) => saveStoredFile(file.key, file.blob))
       );
       return data;
     } catch {
@@ -184,30 +229,29 @@ export const createIndexedDbStorage = (): StorageDriver => ({
     }
   },
 
+  saveFile: saveStoredFile,
+
+  getFile: getStoredFile,
+
+  deleteFile: deleteStoredFile,
+
   async saveEvidenceFile(key: string, blob: Blob): Promise<void> {
-    const db = await getDb();
-    await db.put("files", {
-      key,
-      buffer: await blobToArrayBuffer(blob),
-      type: blob.type,
-      savedAt: new Date().toISOString()
-    });
+    await saveStoredFile(key, blob);
   },
 
   async getEvidenceFile(item): Promise<Blob | undefined> {
-    if (!item.blobKey) {
-      return undefined;
-    }
-    const db = await getDb();
-    const record = await db.get("files", item.blobKey);
-    return record ? new Blob([record.buffer], { type: record.type }) : undefined;
+    return getStoredFile(item);
+  },
+
+  async savePassportPageFile(key: string, blob: Blob): Promise<void> {
+    await saveStoredFile(key, blob);
+  },
+
+  async getPassportPageFile(item): Promise<Blob | undefined> {
+    return getStoredFile(item);
   },
 
   async deleteEvidenceFile(key?: string): Promise<void> {
-    if (!key) {
-      return;
-    }
-    const db = await getDb();
-    await db.delete("files", key);
+    await deleteStoredFile(key);
   }
 });

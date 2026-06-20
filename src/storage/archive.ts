@@ -1,5 +1,5 @@
 import { migrateAppData } from "../domain/seed";
-import type { AppData, EvidenceItem } from "../domain/types";
+import type { AppData, EvidenceItem, PassportDocument, PassportPage } from "../domain/types";
 
 export interface ArchiveEvidenceFile {
   evidenceId: string;
@@ -9,9 +9,18 @@ export interface ArchiveEvidenceFile {
   sizeBytes: number;
 }
 
+export interface ArchivePassportPageFile {
+  passportPageId: string;
+  path: string;
+  fileName: string;
+  mimeType?: string | undefined;
+  sizeBytes: number;
+}
+
 export interface ParsedArchive {
   data: AppData;
   files: Array<ArchiveEvidenceFile & { blob: Blob }>;
+  passportPageFiles: Array<ArchivePassportPageFile & { blob: Blob }>;
 }
 
 interface ZipEntry {
@@ -37,7 +46,12 @@ const DOS_DATE_1980_01_01 = 0x21;
 const MAX_UINT_16 = 0xffff;
 const MAX_UINT_32 = 0xffffffff;
 
-const extensionFor = (item: EvidenceItem): string => {
+interface FileMetadata {
+  fileName?: string | undefined;
+  mimeType?: string | undefined;
+}
+
+const extensionFor = (item: FileMetadata): string => {
   const source = item.fileName ?? "";
   const match = /(\.[A-Za-z0-9]{1,8})$/.exec(source);
   if (match?.[1]) {
@@ -55,16 +69,29 @@ const extensionFor = (item: EvidenceItem): string => {
   return "";
 };
 
-const sanitizeName = (value: string): string =>
+const sanitizeName = (value: string, fallback = "file"): string =>
   value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 42) || "evidence";
+    .slice(0, 42) || fallback;
 
 export const archiveFileNameForEvidence = (item: EvidenceItem): string =>
-  `${item.type}_${sanitizeName(item.title || item.fileName || item.id)}_${sanitizeName(item.id)}${extensionFor(item)}`;
+  `${item.type}_${sanitizeName(item.title || item.fileName || item.id, "evidence")}_${sanitizeName(item.id, "evidence")}${extensionFor(item)}`;
+
+const passportFileLabel = (page: PassportPage): string =>
+  page.pageNumber ? `${page.label}-${page.pageNumber}` : page.label;
+
+export const archiveFileNameForPassportPage = (
+  page: PassportPage,
+  passport?: PassportDocument
+): string => {
+  const passportName = passport
+    ? `${passport.country}-${passport.number}`
+    : page.passportId;
+  return `${sanitizeName(passportName, "passport")}_${page.kind}_${sanitizeName(passportFileLabel(page), "page")}_${sanitizeName(page.id, "page")}${extensionFor(page)}`;
+};
 
 const bytesToArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
   bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -237,13 +264,18 @@ const createZip = async (entries: ZipEntry[]): Promise<Blob> => {
 
 export const createArchive = async (
   data: AppData,
-  getFile: (item: EvidenceItem) => Promise<Blob | undefined>
+  getFile: (item: EvidenceItem | PassportPage) => Promise<Blob | undefined>
 ): Promise<Blob> => {
   const manifestFiles: ArchiveEvidenceFile[] = [];
+  const manifestPassportPageFiles: ArchivePassportPageFile[] = [];
   const entries: ZipEntry[] = [];
+  const passportsById = new Map(data.passports.map((passport) => [passport.id, passport]));
   const nextData: AppData = {
     ...data,
-    evidence: data.evidence.map((item) => ({ ...item }))
+    evidence: data.evidence.map((item) => ({ ...item })),
+    passports: data.passports.map((passport) => ({ ...passport })),
+    passportPages: data.passportPages.map((page) => ({ ...page })),
+    passportUpdateRequests: data.passportUpdateRequests.map((request) => ({ ...request }))
   };
 
   for (const item of nextData.evidence) {
@@ -266,11 +298,40 @@ export const createArchive = async (
     entries.push({ name: path, blob });
   }
 
+  for (const page of nextData.passportPages) {
+    const blob = await getFile(page);
+    if (!blob) {
+      continue;
+    }
+    const fileName = archiveFileNameForPassportPage(page, passportsById.get(page.passportId));
+    const path = `passports/${fileName}`;
+    page.fileName = fileName;
+    page.mimeType = page.mimeType ?? blob.type;
+    page.sizeBytes = blob.size;
+    manifestPassportPageFiles.push({
+      passportPageId: page.id,
+      path,
+      fileName,
+      ...(page.mimeType ? { mimeType: page.mimeType } : {}),
+      sizeBytes: blob.size
+    });
+    entries.push({ name: path, blob });
+  }
+
   entries.unshift({
     name: MANIFEST_FILE,
-    blob: new Blob([JSON.stringify({ version: 1, files: manifestFiles }, null, 2)], {
-      type: "application/json"
-    })
+    blob: new Blob(
+      [
+        JSON.stringify(
+          { version: 2, files: manifestFiles, passportPageFiles: manifestPassportPageFiles },
+          null,
+          2
+        )
+      ],
+      {
+        type: "application/json"
+      }
+    )
   });
   entries.unshift({
     name: DATA_FILE,
@@ -339,8 +400,11 @@ export const parseArchive = async (blob: Blob): Promise<ParsedArchive> => {
   const data = migrateAppData(JSON.parse(decoder.decode(dataEntry.bytes)) as AppData);
   const manifestEntry = byName.get(MANIFEST_FILE);
   const manifest = manifestEntry
-    ? (JSON.parse(decoder.decode(manifestEntry.bytes)) as { files?: ArchiveEvidenceFile[] })
-    : { files: [] };
+    ? (JSON.parse(decoder.decode(manifestEntry.bytes)) as {
+        files?: ArchiveEvidenceFile[];
+        passportPageFiles?: ArchivePassportPageFile[];
+      })
+    : { files: [], passportPageFiles: [] };
   const files = (manifest.files ?? [])
     .map((file) => {
       const entry = byName.get(file.path);
@@ -355,5 +419,21 @@ export const parseArchive = async (blob: Blob): Promise<ParsedArchive> => {
       };
     })
     .filter((file): file is ArchiveEvidenceFile & { blob: Blob } => file !== undefined);
-  return { data, files };
+  const passportPageFiles = (manifest.passportPageFiles ?? [])
+    .map((file) => {
+      const entry = byName.get(file.path);
+      if (!entry) {
+        return undefined;
+      }
+      return {
+        ...file,
+        blob: new Blob([bytesToArrayBuffer(entry.bytes)], {
+          type: file.mimeType ?? "application/octet-stream"
+        })
+      };
+    })
+    .filter(
+      (file): file is ArchivePassportPageFile & { blob: Blob } => file !== undefined
+    );
+  return { data, files, passportPageFiles };
 };

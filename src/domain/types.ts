@@ -55,6 +55,49 @@ export interface EvidenceItem {
   createdAt: string;
 }
 
+export type PassportPageKind = "front" | "last" | "numbered" | "custom";
+
+export type PassportUpdateStatus = "pending" | "resolved";
+
+export type PassportUpdateResolution = "page_uploaded" | "up_to_date";
+
+export interface PassportDocument {
+  id: string;
+  country: CountryCode;
+  number: string;
+  label?: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PassportPage {
+  id: string;
+  passportId: string;
+  kind: PassportPageKind;
+  label: string;
+  pageNumber?: string | undefined;
+  fileName?: string | undefined;
+  mimeType?: string | undefined;
+  sizeBytes?: number | undefined;
+  blobKey?: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PassportUpdateRequest {
+  id: string;
+  stayId: string;
+  country: CountryCode;
+  entryDate: string;
+  status: PassportUpdateStatus;
+  passportId?: string | undefined;
+  pageId?: string | undefined;
+  resolution?: PassportUpdateResolution | undefined;
+  resolvedAt?: string | undefined;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface EvidenceStatus {
   satisfied: number;
   required: number;
@@ -95,10 +138,13 @@ export interface AppSettings {
 }
 
 export interface AppData {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   settings: AppSettings;
   stays: Stay[];
   evidence: EvidenceItem[];
+  passports: PassportDocument[];
+  passportPages: PassportPage[];
+  passportUpdateRequests: PassportUpdateRequest[];
   rules: Rule[];
   updatedAt: string;
 }

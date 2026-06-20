@@ -179,6 +179,24 @@ button.secondary.active {
   color: #075340;
 }
 
+.nav-badge,
+.pending-badge {
+  border-radius: 999px;
+  background: #fae9cc;
+  color: #704106;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.nav-badge {
+  min-width: 1.25rem;
+  padding: 0.05rem 0.36rem;
+}
+
+.pending-badge {
+  padding: 0.18rem 0.52rem;
+}
+
 .app-brand,
 .app-header p,
 .panel h2,
@@ -360,7 +378,8 @@ button.secondary.active {
 .stay-form,
 .settings-form,
 .projection-grid,
-.stay-edit-form {
+.stay-edit-form,
+.passport-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.65rem;
@@ -630,7 +649,8 @@ button.secondary.active {
   gap: 0.35rem;
 }
 
-.evidence-form {
+.evidence-form,
+.passport-page-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.55rem;
@@ -685,6 +705,105 @@ button.secondary.active {
 
 .settings-panel {
   margin-bottom: 2rem;
+}
+
+.passport-panel {
+  gap: 1rem;
+}
+
+.passport-review-list,
+.passport-list,
+.passport-page-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.passport-review-row,
+.passport-card {
+  border: 1px solid #ece7dc;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.passport-review-row {
+  background: #fffaf0;
+}
+
+.passport-review-copy,
+.passport-card-header,
+.passport-page-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.passport-review-copy {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.passport-review-copy svg {
+  color: #8a6122;
+}
+
+.passport-review-copy span,
+.passport-card-header span:not(.country-avatar),
+.passport-page-row span {
+  min-width: 0;
+  display: grid;
+  gap: 0.08rem;
+}
+
+.passport-review-copy strong,
+.passport-card-header strong,
+.passport-page-row strong {
+  overflow-wrap: anywhere;
+}
+
+.passport-review-copy small,
+.passport-card-header small,
+.passport-page-row small {
+  color: #77746b;
+  font-size: 0.76rem;
+}
+
+.passport-stamp-form {
+  display: grid;
+  grid-template-columns:
+    minmax(10rem, 1.2fr) minmax(7.5rem, 0.8fr) minmax(10rem, 1.1fr)
+    minmax(8rem, 0.9fr) minmax(10rem, 1fr) auto;
+  gap: 0.55rem;
+  align-items: end;
+}
+
+.passport-form {
+  border-top: 1px solid #ece7dc;
+  padding-top: 0.85rem;
+}
+
+.passport-card-header {
+  align-items: start;
+}
+
+.passport-page-row {
+  border: 1px solid #f0ede5;
+  border-radius: 7px;
+  background: #fffdf8;
+  padding: 0.55rem;
+}
+
+.passport-page-row svg {
+  color: #0f6e56;
+}
+
+.passport-page-form {
+  border: 1px solid #ece7dc;
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 0.65rem;
 }
 
 .target-editor {
@@ -1022,7 +1141,10 @@ button.secondary.active {
   .projection-grid,
   .stay-edit-form,
   .rule-form-grid,
-  .evidence-form {
+  .evidence-form,
+  .passport-form,
+  .passport-stamp-form,
+  .passport-page-form {
     grid-template-columns: 1fr;
   }
 
@@ -1077,6 +1199,10 @@ button.secondary.active {
 
   .storage-actions,
   .storage-actions button {
+    width: 100%;
+  }
+
+  .passport-stamp-form button {
     width: 100%;
   }
 

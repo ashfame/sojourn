@@ -1,4 +1,4 @@
-import type { AppData, EvidenceItem } from "../domain/types";
+import type { AppData, EvidenceItem, PassportPage } from "../domain/types";
 
 export interface StorageMetadata {
   backend: "indexeddb" | "remote_sqlite" | "memory";
@@ -16,8 +16,13 @@ export interface StorageDriver {
   save(data: AppData): Promise<StorageMetadata>;
   exportData(data: AppData): Promise<Blob>;
   importData(blob: Blob): Promise<AppData>;
+  saveFile(key: string, blob: Blob): Promise<void>;
+  getFile(item: { blobKey?: string | undefined }): Promise<Blob | undefined>;
+  deleteFile(key?: string): Promise<void>;
   saveEvidenceFile(key: string, blob: Blob): Promise<void>;
   getEvidenceFile(item: EvidenceItem): Promise<Blob | undefined>;
+  savePassportPageFile(key: string, blob: Blob): Promise<void>;
+  getPassportPageFile(item: PassportPage): Promise<Blob | undefined>;
   deleteEvidenceFile(key?: string): Promise<void>;
 }
 
