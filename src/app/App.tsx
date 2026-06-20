@@ -1550,7 +1550,7 @@ function FilePreviewModal({
             <X size={16} />
           </button>
         </div>
-        <div className="preview-modal-body">
+        <div className={`preview-modal-body ${isImage && !isPdf ? "image-preview" : ""}`}>
           {isPdf && <iframe title={preview.title} src={preview.url} />}
           {isImage && !isPdf && <img src={preview.url} alt={preview.title} />}
           {!isPdf && !isImage && (
